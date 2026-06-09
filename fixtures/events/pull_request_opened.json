@@ -1,0 +1,22 @@
+{
+  "__eventName": "pull_request",
+  "action": "opened",
+  "repository": { "full_name": "owner/repo", "default_branch": "main" },
+  "sender": { "login": "alice", "type": "User" },
+  "pull_request": {
+    "number": 12,
+    "title": "Improve auth flow",
+    "body": "Please review this PR.",
+    "head": {
+      "ref": "feature/auth",
+      "sha": "abc123",
+      "repo": { "full_name": "owner/repo" }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "def456",
+      "repo": { "full_name": "owner/repo" }
+    },
+    "user": { "login": "alice" }
+  }
+}

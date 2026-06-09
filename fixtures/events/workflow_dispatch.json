@@ -1,0 +1,6 @@
+{
+  "__eventName": "workflow_dispatch",
+  "action": null,
+  "repository": { "full_name": "owner/repo", "default_branch": "main" },
+  "sender": { "login": "maintainer", "type": "User" }
+}

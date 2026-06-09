@@ -1,0 +1,20 @@
+{
+  "__eventName": "issue_comment",
+  "action": "created",
+  "repository": { "full_name": "owner/repo", "default_branch": "main" },
+  "sender": { "login": "maintainer", "type": "User" },
+  "issue": {
+    "number": 12,
+    "title": "Improve auth flow",
+    "body": "PR body",
+    "pull_request": {
+      "url": "https://api.github.com/repos/owner/repo/pulls/12"
+    },
+    "user": { "login": "alice" }
+  },
+  "comment": {
+    "id": 100,
+    "body": "@garda review security only",
+    "user": { "login": "maintainer" }
+  }
+}

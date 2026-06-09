@@ -1,0 +1,17 @@
+{
+  "name": "Garda Code",
+  "url": "https://neosantara.xyz",
+  "hook_attributes": {
+    "active": false
+  },
+  "redirect_url": "https://neosantara.xyz",
+  "public": false,
+  "default_permissions": {
+    "contents": "read",
+    "issues": "write",
+    "pull_requests": "write",
+    "actions": "read",
+    "metadata": "read"
+  },
+  "default_events": []
+}
