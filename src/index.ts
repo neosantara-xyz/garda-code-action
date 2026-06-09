@@ -109,6 +109,21 @@ async function main(): Promise<void> {
     core.info(`Mode input: ${config.mode}`);
 
     if (context.isPR) await hydratePullRequestContext(octokit, context);
+
+    if (context.config.mode === "auto" && context.config.allowFix) {
+      const request = extractUserRequest(context);
+      const isFixRequest =
+        /\bfix\b/i.test(request) ||
+        /\bperbaiki\b/i.test(request) ||
+        /\bpatch\b/i.test(request);
+      if (isFixRequest) {
+        core.info(
+          `Detected fix/patch request in auto mode: "${request}". Dynamically switching mode to 'fix'.`,
+        );
+        context.config.mode = "fix";
+      }
+    }
+
     assertFixAllowed(context);
     const executionMode = detectExecutionMode(context);
     core.info(`Execution mode: ${executionMode}`);

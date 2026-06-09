@@ -47158,6 +47158,16 @@ async function main() {
     );
     info(`Mode input: ${config.mode}`);
     if (context3.isPR) await hydratePullRequestContext(octokit, context3);
+    if (context3.config.mode === "auto" && context3.config.allowFix) {
+      const request3 = extractUserRequest(context3);
+      const isFixRequest = /\bfix\b/i.test(request3) || /\bperbaiki\b/i.test(request3) || /\bpatch\b/i.test(request3);
+      if (isFixRequest) {
+        info(
+          `Detected fix/patch request in auto mode: "${request3}". Dynamically switching mode to 'fix'.`
+        );
+        context3.config.mode = "fix";
+      }
+    }
     assertFixAllowed(context3);
     const executionMode = detectExecutionMode(context3);
     info(`Execution mode: ${executionMode}`);
