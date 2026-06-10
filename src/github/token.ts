@@ -52,6 +52,19 @@ async function exchangeOidcForGitHubToken(
   return token;
 }
 
+/**
+ * Resolve the GitHub token used for all API calls in this run.
+ *
+ * Resolution order depends on `use_github_app_token_exchange`:
+ * - "on": always use the hosted OIDC exchange; throw if it fails.
+ * - "off": use the provided `github_token` / `GITHUB_TOKEN` only.
+ * - "auto" (default): try the hosted exchange when OIDC and a hosted URL are
+ *   available, otherwise fall back to the workflow token.
+ *
+ * @param config Action configuration (mutated: `githubToken` is set to the result).
+ * @returns The resolved GitHub token.
+ * @throws If no token can be obtained.
+ */
 export async function resolveGitHubToken(
   config: ActionConfig,
 ): Promise<string> {
