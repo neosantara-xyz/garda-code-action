@@ -1,5 +1,10 @@
 name: Garda Live Test
 
+# Dogfooding workflow: Garda reviews its own pull requests.
+# Uses the default token resolution (auto): tries the hosted token exchange
+# when OIDC is available and the Garda app is installed, otherwise falls back
+# to GITHUB_TOKEN so reviews still run.
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -26,18 +31,7 @@ jobs:
         with:
           trigger_phrase: "@garda"
           mode: "auto"
-          model: "claude-opus-4-6"
           review_language: "id"
           allow_fix: "true"
-          
-          # --- KONFIGURASI DENGAN API KEY (Default) ---
-          # env:
-          #   NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}
-          
-          # --- KONFIGURASI DENGAN OIDC TOKEN EXCHANGE ---
-          # Aktifkan blok di bawah ini untuk menguji pertukaran token GitHub App
-          use_github_app_token_exchange: "true"
-          github_app_token_exchange_url: "https://api.neosantara.xyz/github-app/token-exchange"
-          github_app_token_exchange_audience: "garda-code-action"
         env:
           NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}
