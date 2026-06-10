@@ -66,7 +66,10 @@ const baseConfig: ActionConfig = {
 
 function fixture(name: string) {
   return JSON.parse(
-    readFileSync(new URL(`../fixtures/events/${name}.json`, import.meta.url)),
+    readFileSync(
+      new URL(`../fixtures/events/${name}.json`, import.meta.url),
+      "utf8",
+    ),
   );
 }
 
