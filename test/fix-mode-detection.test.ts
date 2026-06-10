@@ -29,7 +29,8 @@ const baseConfig: ActionConfig = {
   allowFix: true,
   commitMessage: "chore: apply Garda Code changes",
   branchPrefix: "garda/",
-  branchNameTemplate: "{{prefix}}{{entityType}}-{{entityNumber}}-{{description}}",
+  branchNameTemplate:
+    "{{prefix}}{{entityType}}-{{entityNumber}}-{{description}}",
   botId: "",
   botName: "garda-code[bot]",
   inlineClassifierMode: "model",
