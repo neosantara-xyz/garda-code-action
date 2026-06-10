@@ -34,3 +34,7 @@ All notable changes to Garda Code Action are documented here.
 - Token exchange validates that the calling workflow runs from the default
   branch or a pull-request ref, and revokes the minted token if validation
   fails (fail-closed).
+
+## [Unreleased]
+
+- Progress comment rendering hardened against duplicate titles.
