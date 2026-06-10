@@ -6,6 +6,8 @@ All notable changes to Garda Code Action are documented here.
 
 ### Added
 
+- **Branded progress spinner** — the progress comment now uses Garda's own
+  animated spinner asset instead of a borrowed one.
 - **Hosted GitHub App token exchange** — Garda mints its `garda-code[bot]`
   token automatically via Neosantara's OIDC token exchange. No private key to
   manage. Auto-detects `id-token: write` and falls back to `GITHUB_TOKEN` when
