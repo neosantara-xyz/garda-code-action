@@ -73,9 +73,7 @@ describe("createOrUpdateTrackingComment — inline review replies", () => {
     );
 
     // Must reply in-thread, not reuse the sticky issue comment.
-    expect(
-      octokit.rest.pulls.createReplyForReviewComment,
-    ).toHaveBeenCalledWith(
+    expect(octokit.rest.pulls.createReplyForReviewComment).toHaveBeenCalledWith(
       expect.objectContaining({ comment_id: 555, pull_number: 42 }),
     );
     expect(octokit.rest.issues.updateComment).not.toHaveBeenCalled();
