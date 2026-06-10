@@ -2,7 +2,25 @@
 
 Claude Code Action can appear as the official Claude GitHub App because Anthropic runs a backend that exchanges a GitHub Actions OIDC token for a GitHub App installation token.
 
-Garda Code Action v0.1.8 includes the client-side hook for the same pattern, but Neosantara still needs to host the exchange service.
+Garda supports the same pattern. The action ships the client-side hook, and Neosantara hosts the exchange service at `https://api.neosantara.xyz/github-app/token-exchange`. With it, Garda comments and commits appear as `garda-code[bot]` without you having to manage a GitHub App private key in every repository — the workflow only needs `id-token: write`.
+
+## How it works
+
+```text
+GitHub Actions runner                Neosantara backend                 GitHub
+  │  getIDToken(audience)                  │                               │
+  │ ───────────────────────────────────▶  │                               │
+  │  POST /github-app/token-exchange       │                               │
+  │  Bearer <OIDC JWT>                      │  verify OIDC (JWKS, aud,      │
+  │  { repository, run_id, ref, sha }       │  issuer, claim match)        │
+  │                                         │  mint App JWT, find install  │
+  │                                         │ ────────────────────────────▶│
+  │                                         │  installation access token   │
+  │                                         │  validate workflow runs on   │
+  │                                         │  the repo default branch     │
+  │  { token, expires_at }                  │ ◀──────────────────────────── │
+  │ ◀───────────────────────────────────  │                               │
+```
 
 ## Workflow permissions
 
@@ -24,12 +42,43 @@ with:
   github_app_token_exchange_audience: "garda-code-action"
 ```
 
-The action will:
+## Full workflow example
 
-1. Request an OIDC token with `@actions/core.getIDToken(audience)`.
-2. POST that token to the exchange URL.
-3. Expect JSON containing `token` or `github_token`.
-4. Use the returned token for all GitHub API calls.
+```yaml
+name: Garda Review (hosted token exchange)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  id-token: write # required to request the OIDC token
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  garda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: neosantara-xyz/garda-code-action@v1
+        with:
+          use_github_app_token_exchange: "true"
+          github_app_token_exchange_url: "https://api.neosantara.xyz/github-app/token-exchange"
+          github_app_token_exchange_audience: "garda-code-action"
+          trigger_phrase: "@garda"
+          mode: "auto"
+        env:
+          NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}
+```
+
+No `GARDA_APP_PRIVATE_KEY` secret is needed — the private key lives only on the Neosantara backend.
 
 ## Expected exchange response
 
@@ -40,14 +89,17 @@ The action will:
 }
 ```
 
-## Server-side responsibilities
+## Server-side guarantees
 
-The hosted service must:
+The hosted service (Neosantara `routes/oidc.js`) enforces:
 
-- validate the OIDC token issuer, audience, repository, ref, workflow, and run claims;
-- map the repository/org to the installed Garda Code GitHub App installation;
-- mint a scoped installation token with minimum permissions;
-- reject fork/untrusted combinations unless explicitly allowed;
-- audit log every exchange.
+- OIDC token verification against GitHub's JWKS — issuer, audience, and RS256 signature;
+- claim matching: the `repository`, `run_id`, `ref`, and `sha` in the request body must equal the verified OIDC claims (anti-tampering);
+- **workflow trust**: the token is only issued when the OIDC `job_workflow_ref` resolves to the repository's default branch, so a malicious PR cannot mint a token for an unreviewed workflow. If validation fails, the minted installation token is immediately revoked (fail-closed);
+- minimum-scope installation tokens with a short `expires_at`.
 
-Without this backend, use `actions/create-github-app-token` in the workflow instead.
+## Prerequisite: install the Garda GitHub App
+
+The backend can only mint a token for repositories where the Garda Code GitHub App is installed, and it must be configured with `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY`. If the app is not installed on the target repository, the exchange returns `installation_not_found`.
+
+If you prefer to manage the key yourself instead of using the hosted service, use `actions/create-github-app-token` in the workflow — see [`setup-github-app.md`](setup-github-app.md).

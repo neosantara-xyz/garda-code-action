@@ -18,11 +18,28 @@ jobs:
   garda:
     runs-on: ubuntu-latest
     steps:
+      # Generate a short-lived GitHub App token so comments appear as
+      # garda-code[bot] instead of github-actions[bot].
+      # See docs/setup-github-app.md to create the app and set these secrets.
+      - name: Create Garda GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.GARDA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GARDA_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-pull-requests: write
+          permission-issues: write
+          permission-actions: read
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
       - uses: neosantara-xyz/garda-code-action@v1
         with:
+          github_token: ${{ steps.app-token.outputs.token }}
           trigger_phrase: "@garda"
           mode: "auto"
           review_language: "id"

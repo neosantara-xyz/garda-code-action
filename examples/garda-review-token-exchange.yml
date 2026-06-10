@@ -1,0 +1,42 @@
+name: Garda Review (hosted token exchange)
+
+# Run Garda as garda-code[bot] without storing a GitHub App private key in
+# your repository. The action requests a GitHub Actions OIDC token and exchanges
+# it for a scoped installation token at the Neosantara hosted endpoint.
+#
+# Requirements:
+#   - The Garda Code GitHub App must be installed on this repository.
+#   - permissions.id-token: write (to request the OIDC token).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  garda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: neosantara-xyz/garda-code-action@v1
+        with:
+          use_github_app_token_exchange: "true"
+          github_app_token_exchange_url: "https://api.neosantara.xyz/github-app/token-exchange"
+          github_app_token_exchange_audience: "garda-code-action"
+          trigger_phrase: "@garda"
+          mode: "auto"
+          review_language: "id"
+        env:
+          NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}
