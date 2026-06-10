@@ -7,13 +7,32 @@ import * as core from "@actions/core";
 import type { NeoTool, ToolExecutionContext } from "../tools/types.js";
 
 export interface McpServerConfig {
-  command: string;
+  command?: string;
+  server_url?: string;
+  authorization_token?: string;
   args?: string[];
   env?: Record<string, string>;
+  require_approval?: "never" | "always";
 }
 
 export interface McpConfig {
   mcpServers?: Record<string, McpServerConfig>;
+}
+
+export function buildNativeMcpTools(
+  config: McpConfig,
+): Array<Record<string, unknown>> {
+  return Object.entries(config.mcpServers || {})
+    .filter(([, s]) => s.server_url)
+    .map(([label, s]) => ({
+      type: "mcp",
+      server_label: label,
+      server_url: s.server_url,
+      require_approval: s.require_approval ?? "never",
+      ...(s.authorization_token
+        ? { authorization_token: s.authorization_token }
+        : {}),
+    }));
 }
 
 export interface McpTool {
@@ -80,7 +99,7 @@ export class McpClient {
       let resolved = false;
 
       const env = { ...process.env, ...(this.config.env || {}) };
-      this.process = spawn(this.config.command, this.config.args || [], {
+      this.process = spawn(this.config.command!, this.config.args || [], {
         env,
         stdio: ["pipe", "pipe", "inherit"],
       });
@@ -233,7 +252,14 @@ export async function loadAndStartMcpServers(
 
   for (const [serverName, serverConfig] of Object.entries(servers)) {
     if (!serverConfig.command) {
-      core.warning(`MCP server ${serverName} has no command configured. Skipping.`);
+      if (serverConfig.server_url)
+        core.info(
+          `MCP server ${serverName} uses native server_url — skipping local spawn.`,
+        );
+      else
+        core.warning(
+          `MCP server ${serverName} has no command or server_url configured. Skipping.`,
+        );
       continue;
     }
     core.info(`Starting MCP server: ${serverName}`);
@@ -241,7 +267,9 @@ export async function loadAndStartMcpServers(
     try {
       const tools = await client.start();
       activeClients.push(client);
-      core.info(`✓ MCP server ${serverName} started. Found ${tools.length} tools.`);
+      core.info(
+        `✓ MCP server ${serverName} started. Found ${tools.length} tools.`,
+      );
 
       for (const tool of tools) {
         let registeredName = tool.name;

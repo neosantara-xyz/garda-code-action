@@ -83,6 +83,7 @@ function context(): NeoContext {
       useGitHubAppTokenExchange: false,
       githubAppTokenExchangeUrl: "",
       githubAppTokenExchangeAudience: "garda-code-action",
+      fallbackModels: [],
     },
   };
 }

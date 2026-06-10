@@ -8,6 +8,7 @@ import type {
   CommentLike,
   EntityLike,
   GitHubClient,
+  ReviewLike,
 } from "./types.js";
 import {
   downloadCommentImages,
@@ -21,6 +22,7 @@ export type ChangedFile = {
   additions: number;
   deletions: number;
   changes: number;
+  sha?: string | null;
   patch?: string;
   raw_url?: string;
   blob_url?: string;
@@ -31,10 +33,12 @@ export type GitHubData = {
   entity: EntityLike;
   comments: CommentLike[];
   reviewComments: CommentLike[];
+  reviews: ReviewLike[];
   changedFiles: ChangedFile[];
   diff: string;
   ciStatus: CiStatus | null;
   commentImages: DownloadedCommentImage[];
+  triggerDisplayName?: string;
 };
 
 type Timestamped = {
@@ -110,11 +114,63 @@ function sanitizeComment<T extends CommentLike>(comment: T): T {
   return { ...comment, body: sanitizeContent(comment.body || "") };
 }
 
-function sanitizeEntity<T extends EntityLike>(entity: T): T {
+/**
+ * TOCTOU guard for the entity body/title. An attacker can trigger Garda via an
+ * authorized user's comment, then edit the issue/PR body to inject instructions
+ * before we fetch it. If the fetched entity was updated at/after the trigger
+ * timestamp, prefer the webhook payload body (frozen at event time) and drop a
+ * security warning. Mirrors Claude Code Action's isBodySafeToUse.
+ */
+function safeEntityBody(
+  context: NeoContext,
+  fetched: EntityLike,
+): { title: string; body: string } {
+  const trigger = triggerTimestamp(context);
+  const payloadEntity = context.isPR
+    ? context.payload.pull_request
+    : context.payload.issue;
+  const fetchedTitle = fetched.title || "";
+  const fetchedBody = fetched.body || "";
+
+  if (!trigger) return { title: fetchedTitle, body: fetchedBody };
+
+  const triggerMs = new Date(trigger).getTime();
+  const updatedMs = fetched.body
+    ? new Date((fetched as { updated_at?: string }).updated_at || 0).getTime()
+    : 0;
+
+  if (
+    Number.isFinite(triggerMs) &&
+    Number.isFinite(updatedMs) &&
+    updatedMs >= triggerMs
+  ) {
+    // Entity was edited at/after the trigger — use the frozen payload version.
+    const safeTitle = payloadEntity?.title ?? fetchedTitle;
+    const safeBody = payloadEntity?.body ?? "";
+    // Only warn when content actually differs.
+    if (safeBody !== fetchedBody || safeTitle !== fetchedTitle) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "::warning::Entity body/title was edited at/after the trigger time. Using the webhook payload version to prevent post-trigger injection.",
+      );
+    }
+    return { title: safeTitle, body: safeBody };
+  }
+
+  return { title: fetchedTitle, body: fetchedBody };
+}
+
+function sanitizeEntity<T extends EntityLike>(
+  entity: T,
+  context?: NeoContext,
+): T {
+  const safe = context
+    ? safeEntityBody(context, entity)
+    : { title: entity.title || "", body: entity.body || "" };
   return {
     ...entity,
-    title: sanitizeContent(entity.title || ""),
-    body: sanitizeContent(entity.body || ""),
+    title: sanitizeContent(safe.title),
+    body: sanitizeContent(safe.body),
   };
 }
 
@@ -221,6 +277,7 @@ export async function fetchGitHubData(
       entity: context.payload,
       comments: [],
       reviewComments: [],
+      reviews: [],
       changedFiles: [],
       diff: "",
       ciStatus: null,
@@ -239,6 +296,7 @@ export async function fetchGitHubData(
     5,
   );
   const filteredComments = existedBeforeTrigger(comments, context)
+    .filter((comment) => !comment.is_minimized)
     .filter((comment) =>
       actorAllowed(
         comment.user?.login || "",
@@ -254,7 +312,7 @@ export async function fetchGitHubData(
       repo,
       issue_number,
     });
-    const sanitizedIssue = sanitizeEntity(issue);
+    const sanitizedIssue = sanitizeEntity(issue, context);
     const commentImages = await downloadCommentImages(
       octokit,
       context,
@@ -264,6 +322,7 @@ export async function fetchGitHubData(
       entity: sanitizedIssue,
       comments: filteredComments,
       reviewComments: [],
+      reviews: [],
       changedFiles: [],
       diff: "",
       ciStatus: null,
@@ -295,6 +354,7 @@ export async function fetchGitHubData(
     5,
   );
   const filteredReviewComments = existedBeforeTrigger(reviewComments, context)
+    .filter((comment) => !comment.is_minimized)
     .filter((comment) =>
       actorAllowed(
         comment.user?.login || "",
@@ -304,10 +364,37 @@ export async function fetchGitHubData(
     )
     .map(sanitizeComment);
 
+  // Top-level PR reviews (APPROVED / CHANGES_REQUESTED / COMMENTED + body).
+  // Important context for fix mode responding to reviewer feedback cycles.
+  const reviews = await paginate<ReviewLike>(
+    (p) =>
+      octokit.rest.pulls.listReviews({
+        owner,
+        repo,
+        pull_number: number,
+        ...p,
+      }),
+    5,
+  );
+  const filteredReviews = existedBeforeTrigger(reviews, context)
+    .filter((review) =>
+      actorAllowed(
+        review.user?.login || "",
+        context.config.includeCommentsByActor,
+        context.config.excludeCommentsByActor,
+      ),
+    )
+    .filter((review) => (review.body || "").trim().length > 0)
+    .map((review) => ({
+      ...review,
+      body: sanitizeContent(review.body || ""),
+    }));
+
   let diff = changedFiles
     .map((file) => {
       const patch = file.patch || "[binary or patch unavailable]";
-      return `diff -- ${sanitizeContent(file.filename)}\nstatus: ${sanitizeContent(file.status)} +${file.additions}/-${file.deletions}\n${sanitizeContent(patch)}`;
+      const shaLine = file.sha ? `sha: ${file.sha}\n` : "";
+      return `diff -- ${sanitizeContent(file.filename)}\nstatus: ${sanitizeContent(file.status)} +${file.additions}/-${file.deletions}\n${shaLine}${sanitizeContent(patch)}`;
     })
     .join("\n\n");
   diff = redact(diff);
@@ -336,21 +423,33 @@ export async function fetchGitHubData(
     ciStatus = null;
   }
 
-  const sanitizedPr = sanitizeEntity(pr);
+  const sanitizedPr = sanitizeEntity(pr, context);
   const commentImages = await downloadCommentImages(
     octokit,
     context,
     commentImageSources(context, pr, filteredComments, filteredReviewComments),
   );
 
+  let triggerDisplayName: string | undefined;
+  try {
+    const { data: user } = await octokit.rest.users.getByUsername({
+      username: context.actor,
+    });
+    triggerDisplayName = user.name || user.login || undefined;
+  } catch {
+    // Non-critical — commit attribution still works without display name
+  }
+
   return {
     entity: sanitizedPr,
     comments: filteredComments,
     reviewComments: filteredReviewComments,
+    reviews: filteredReviews,
     changedFiles,
     diff,
     ciStatus,
     commentImages,
+    triggerDisplayName,
   };
 }
 
@@ -364,6 +463,25 @@ export function formatGitHubContext(
     `Event: ${context.eventName}${context.eventAction ? `.${context.eventAction}` : ""}`,
   );
   lines.push(`Actor: ${context.actor}`);
+
+  // Surface the trigger comment's location so "@garda fix this" on a specific
+  // PR line tells the model exactly which file/line the user is pointing at.
+  if (
+    context.eventName === "pull_request_review_comment" &&
+    context.payload.comment?.path
+  ) {
+    const c = context.payload.comment;
+    lines.push(
+      "\n=== TRIGGER COMMENT LOCATION (the user is referring to this exact line) ===",
+    );
+    lines.push(
+      `File: ${sanitizeContent(c.path || "")}:${c.line || c.original_line || "?"}`,
+    );
+    if (c.diff_hunk)
+      lines.push(`Diff hunk context:\n${sanitizeContent(c.diff_hunk)}`);
+    lines.push("=== END TRIGGER LOCATION ===");
+  }
+
   if (context.isPR) {
     lines.push(
       `Pull Request: #${context.entityNumber} ${sanitizeContent(data.entity.title || "")}`,
@@ -393,6 +511,14 @@ export function formatGitHubContext(
     for (const comment of data.comments.slice(-20)) {
       lines.push(
         `[${comment.user?.login || "unknown"} at ${comment.created_at}]: ${sanitizeContent(comment.body || "")}`,
+      );
+    }
+  }
+  if (data.reviews?.length) {
+    lines.push("\nPrior PR reviews before the trigger:");
+    for (const review of data.reviews.slice(-10)) {
+      lines.push(
+        `[Review by ${review.user?.login || "unknown"} at ${review.submitted_at} — ${review.state || "COMMENTED"}]: ${sanitizeContent(review.body || "")}`,
       );
     }
   }

@@ -34,6 +34,10 @@ inputs:
     description: "Neosantara model id"
     required: false
     default: "grok-code-fast"
+  fallback_model:
+    description: "Fallback Neosantara model id(s) if the primary model is unavailable (503/404/422). Accepts multiple models separated by comma or newline; they are tried in order."
+    required: false
+    default: ""
   neosantara_base_url:
     description: "Neosantara OpenAI-compatible base URL"
     required: false

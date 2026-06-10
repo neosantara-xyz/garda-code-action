@@ -8,6 +8,7 @@ import type { NeoTool } from "./types.js";
 import { redact } from "../utils/redact.js";
 import { truncateText, splitList } from "../utils/text.js";
 import { shouldIgnore } from "../github/data.js";
+import { isRepositoryMutationAllowed } from "../github/permissions.js";
 import { subprocessEnv } from "../utils/subprocess-env.js";
 
 function repoRoot(): string {
@@ -188,9 +189,9 @@ export const repoTools: NeoTool[] = [
     schema: z.object({ path: z.string(), content: z.string() }),
     readonly: false,
     async execute(args, ctx) {
-      if (!ctx.github.config.allowFix)
+      if (!isRepositoryMutationAllowed(ctx.github))
         throw new Error(
-          "repo_write_file is disabled. Set allow_fix=true and mode=fix to enable writes.",
+          "repo_write_file is disabled. Requires allow_fix=true, mode=fix, and a non-fork pull request.",
         );
       const parsed = this.schema.parse(args) as {
         path: string;

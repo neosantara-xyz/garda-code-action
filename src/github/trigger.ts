@@ -66,11 +66,16 @@ export function extractUserRequest(context: NeoContext): string {
     context.payload.pull_request?.body ??
     context.payload.issue?.body ??
     "";
+  // Use string indexOf instead of regex to avoid ReDoS with large bodies
+  const phrase = triggerPhrase.trim();
+  let cleaned = String(raw);
+  if (phrase) {
+    const idx = cleaned.toLowerCase().indexOf(phrase.toLowerCase());
+    if (idx !== -1)
+      cleaned = cleaned.slice(0, idx) + cleaned.slice(idx + phrase.length);
+  }
   return (
-    sanitizeContent(
-      String(raw)
-        .replace(new RegExp(escapeRegExp(triggerPhrase), "ig"), "")
-        .trim(),
-    ) || "Review this context and help with the requested GitHub task."
+    sanitizeContent(cleaned.trim()) ||
+    "Review this context and help with the requested GitHub task."
   );
 }

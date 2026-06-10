@@ -178,7 +178,35 @@ async function createResponseWithRetry(
         body as never,
       )) as unknown as NeosantaraResponse;
     } catch (error) {
-      if (attempt >= attempts || !isRetryable(error)) throw error;
+      if (attempt >= attempts || !isRetryable(error)) {
+        // Try the next fallback model on final attempt if configured and the
+        // error is model-availability related. Fallbacks are tried in order.
+        const status = isRetryableError(error)
+          ? error.status || error.response?.status
+          : undefined;
+        const fallbacks: string[] = Array.isArray(
+          (body as any).__fallbackModels,
+        )
+          ? (body as any).__fallbackModels
+          : [];
+        const next = fallbacks.find((m) => m && m !== body.model);
+        if (next && (status === 503 || status === 404 || status === 422)) {
+          core.warning(
+            `Model ${body.model} unavailable (${status}); retrying with fallback model: ${next}`,
+          );
+          return createResponseWithRetry(
+            client,
+            {
+              ...body,
+              model: next,
+              // Drop the one we're about to use so we advance through the list.
+              __fallbackModels: fallbacks.filter((m) => m !== next),
+            },
+            2,
+          );
+        }
+        throw error;
+      }
       const wait = retryAfterMs(error, attempt);
       core.warning(
         `Neosantara Responses API transient error. Retry ${attempt}/${attempts - 1} in ${wait}ms.`,
@@ -217,10 +245,31 @@ export async function runNeoAgent(params: {
   );
 
   const existingToolNames = new Set(registry.keys());
-  const { loadAndStartMcpServers } = await import("../mcp/client.js");
+  const { loadAndStartMcpServers, buildNativeMcpTools } =
+    await import("../mcp/client.js");
   const mcpData = await loadAndStartMcpServers(existingToolNames);
   for (const tool of mcpData.tools) {
     registry.set(tool.name, tool);
+  }
+
+  // Load native MCP tools (server_url-based) from .mcp.json
+  const cwd = process.env.GITHUB_WORKSPACE || process.cwd();
+  const mcpConfigPath = `${cwd}/.mcp.json`;
+  let nativeMcpTools: Array<Record<string, unknown>> = [];
+  try {
+    const { readFileSync, existsSync } = await import("node:fs");
+    if (existsSync(mcpConfigPath)) {
+      const mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf8"));
+      nativeMcpTools = buildNativeMcpTools(mcpConfig);
+      if (nativeMcpTools.length > 0)
+        core.info(
+          `Loaded ${nativeMcpTools.length} native MCP tools from .mcp.json`,
+        );
+    }
+  } catch (err) {
+    core.warning(
+      `Failed to load native MCP tools: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   const tools = buildResponsesTools(registry);
@@ -275,9 +324,12 @@ export async function runNeoAgent(params: {
           model: params.github.config.model,
           input,
           previous_response_id: previousResponseId,
-          tools,
+          tools: [...tools, ...nativeMcpTools],
           tool_choice: "auto",
           store: true,
+          ...(params.github.config.fallbackModels.length > 0
+            ? { __fallbackModels: params.github.config.fallbackModels }
+            : {}),
           metadata: {
             github_repository: params.github.repository.fullName,
             github_run_id: params.github.runId,
@@ -299,7 +351,8 @@ export async function runNeoAgent(params: {
         output: {
           usage: lastUsage,
           output_types: (response.output || []).map((item) => item.type),
-          input_images: step === 1 ? (params.data.commentImages || []).length : 0,
+          input_images:
+            step === 1 ? (params.data.commentImages || []).length : 0,
         },
       });
       if (params.github.config.showFullOutput)
@@ -324,7 +377,9 @@ export async function runNeoAgent(params: {
         0,
         params.github.config.maxToolCallsPerStep,
       );
-      const skippedCalls = calls.slice(params.github.config.maxToolCallsPerStep);
+      const skippedCalls = calls.slice(
+        params.github.config.maxToolCallsPerStep,
+      );
 
       for (const call of executableCalls) {
         const signature = toolSignature(call);

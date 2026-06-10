@@ -52,13 +52,20 @@ export async function validateActorAndPermissions(
   if (!context.isEntity) return { canWrite: true, isBot };
 
   if (context.config.allowedNonWriteUsers) {
+    const wildcard = context.config.allowedNonWriteUsers.trim() === "*";
     if (
-      context.config.allowedNonWriteUsers.trim() === "*" ||
+      wildcard ||
       splitList(context.config.allowedNonWriteUsers).includes(actor)
     ) {
-      core.warning(
-        `Bypassing write permission check for ${actor} via allowed_non_write_users. Use only with limited workflow permissions.`,
-      );
+      if (wildcard) {
+        core.warning(
+          `⚠️ SECURITY WARNING: Bypassing write permission check for ${actor} due to allowed_non_write_users='*'. This grants ANY user the ability to trigger the action — use only with very limited workflow permissions.`,
+        );
+      } else {
+        core.warning(
+          `⚠️ Bypassing write permission check for ${actor} via allowed_non_write_users. Use only with limited workflow permissions.`,
+        );
+      }
       return { canWrite: true, isBot };
     }
   }

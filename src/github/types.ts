@@ -18,6 +18,8 @@ export type CommentLike = {
   path?: string | null;
   line?: number | null;
   original_line?: number | null;
+  diff_hunk?: string | null;
+  is_minimized?: boolean | null;
 };
 
 export type RepoRef = {
@@ -35,6 +37,7 @@ export type EntityLike = {
   body?: string | null;
   state?: string;
   merged?: boolean;
+  updated_at?: string | null;
   html_url?: string;
   user?: GitHubUser | null;
   author?: GitHubUser | null;
@@ -63,6 +66,15 @@ export type GardaPayload = {
   };
   inputs?: Record<string, unknown>;
   client_payload?: Record<string, unknown>;
+};
+
+export type ReviewLike = {
+  id?: number;
+  body?: string | null;
+  state?: string | null;
+  user?: GitHubUser | null;
+  submitted_at?: string | null;
+  html_url?: string;
 };
 
 export type CiStatus = {

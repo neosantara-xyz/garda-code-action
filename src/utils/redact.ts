@@ -1,7 +1,9 @@
 const SECRET_PATTERNS = [
-  /ghp_[A-Za-z0-9_]{20,}/g,
-  /github_pat_[A-Za-z0-9_]{20,}/g,
-  /ghs_[A-Za-z0-9_]{20,}/g,
+  /\bghp_[A-Za-z0-9]{36}\b/g,
+  /\bgho_[A-Za-z0-9]{36}\b/g,
+  /\bghs_[A-Za-z0-9]{36}\b/g,
+  /\bghr_[A-Za-z0-9]{36}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{11,221}\b/g,
   /sk-[A-Za-z0-9_-]{20,}/g,
   /NEOSANTARA_API_KEY\s*=\s*[^\s]+/gi,
   /Authorization:\s*Bearer\s+[^\s]+/gi,

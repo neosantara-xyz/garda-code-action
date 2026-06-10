@@ -100,6 +100,7 @@ function context(): NeoContext {
       useGitHubAppTokenExchange: false,
       githubAppTokenExchangeUrl: "",
       githubAppTokenExchangeAudience: "garda-code-action",
+      fallbackModels: [],
     },
   };
 }
@@ -108,6 +109,7 @@ const data: GitHubData = {
   entity: { title: "PR" },
   comments: [],
   reviewComments: [],
+  reviews: [],
   changedFiles: [
     {
       filename: "src/a.ts",
@@ -221,6 +223,100 @@ describe("Responses runner hardening", () => {
     expect(requests.at(2)?.previous_response_id).toBe("r2");
     expect(requests.at(2)?.input?.at(0)?.output).toContain(
       "Tool repetition guard",
+    );
+  });
+
+  it("retries with fallback model when primary returns 503", async () => {
+    const requests: Array<{ model?: string }> = [];
+    const ctx = context();
+    ctx.config.fallbackModels = ["backup-model"];
+    let primaryCalls = 0;
+    const client = {
+      responses: {
+        create: async (body: { model?: string }) => {
+          requests.push(body);
+          if (body.model === "grok-code-fast") {
+            primaryCalls += 1;
+            const err = new Error("model unavailable") as Error & {
+              status?: number;
+            };
+            err.status = 503;
+            throw err;
+          }
+          // Fallback model succeeds with a plain text answer
+          return {
+            id: "rf",
+            output_text: "fallback done",
+            output: [],
+            usage: { input_tokens: 1 },
+          };
+        },
+      },
+    } as unknown as OpenAI;
+
+    const result = await runNeoAgent({
+      client,
+      github: ctx,
+      data,
+      systemPrompt: "system",
+      taskPrompt: "task",
+      octokit: {} as unknown as GitHubClient,
+      trackingComment: null,
+      setTrackingComment() {},
+      inlineBuffer: [],
+    });
+
+    expect(result.text).toBe("fallback done");
+    // Primary attempted (with its own internal retries), then fallback used
+    expect(primaryCalls).toBeGreaterThanOrEqual(1);
+    expect(requests.some((r) => r.model === "backup-model")).toBe(true);
+  });
+
+  it("walks through multiple fallback models in order until one succeeds", async () => {
+    const triedModels: string[] = [];
+    const ctx = context();
+    ctx.config.fallbackModels = ["fallback-a", "fallback-b"];
+    const client = {
+      responses: {
+        create: async (body: { model?: string }) => {
+          triedModels.push(body.model as string);
+          // Primary and the first fallback are unavailable; second succeeds.
+          if (body.model === "grok-code-fast" || body.model === "fallback-a") {
+            const err = new Error("unavailable") as Error & {
+              status?: number;
+            };
+            err.status = 503;
+            throw err;
+          }
+          return {
+            id: "rb",
+            output_text: "second fallback done",
+            output: [],
+            usage: { input_tokens: 1 },
+          };
+        },
+      },
+    } as unknown as OpenAI;
+
+    const result = await runNeoAgent({
+      client,
+      github: ctx,
+      data,
+      systemPrompt: "system",
+      taskPrompt: "task",
+      octokit: {} as unknown as GitHubClient,
+      trackingComment: null,
+      setTrackingComment() {},
+      inlineBuffer: [],
+    });
+
+    expect(result.text).toBe("second fallback done");
+    expect(triedModels).toContain("grok-code-fast");
+    expect(triedModels).toContain("fallback-a");
+    expect(triedModels).toContain("fallback-b");
+    // Order preserved: a before b
+    expect(triedModels.indexOf("fallback-a")).toBeLessThan(
+      triedModels.indexOf("fallback-b"),
     );
   });
 });

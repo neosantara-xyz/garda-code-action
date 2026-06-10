@@ -63,6 +63,7 @@ const config: ActionConfig = {
   useGitHubAppTokenExchange: false,
   githubAppTokenExchangeUrl: "",
   githubAppTokenExchangeAudience: "garda-code-action",
+      fallbackModels: [],
 };
 
 function fixture(name: string) {

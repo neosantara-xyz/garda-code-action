@@ -23371,9 +23371,11 @@ function escapeRegExp(value) {
 
 // src/utils/redact.ts
 var SECRET_PATTERNS = [
-  /ghp_[A-Za-z0-9_]{20,}/g,
-  /github_pat_[A-Za-z0-9_]{20,}/g,
-  /ghs_[A-Za-z0-9_]{20,}/g,
+  /\bghp_[A-Za-z0-9]{36}\b/g,
+  /\bgho_[A-Za-z0-9]{36}\b/g,
+  /\bghs_[A-Za-z0-9]{36}\b/g,
+  /\bghr_[A-Za-z0-9]{36}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{11,221}\b/g,
   /sk-[A-Za-z0-9_-]{20,}/g,
   /NEOSANTARA_API_KEY\s*=\s*[^\s]+/gi,
   /Authorization:\s*Bearer\s+[^\s]+/gi,
@@ -23468,9 +23470,14 @@ function extractUserRequest(context4) {
   const { prompt: prompt2, triggerPhrase: triggerPhrase2 } = context4.config;
   if (prompt2.trim()) return prompt2.trim();
   const raw = context4.payload.comment?.body ?? context4.payload.review?.body ?? context4.payload.pull_request?.body ?? context4.payload.issue?.body ?? "";
-  return sanitizeContent(
-    String(raw).replace(new RegExp(escapeRegExp(triggerPhrase2), "ig"), "").trim()
-  ) || "Review this context and help with the requested GitHub task.";
+  const phrase = triggerPhrase2.trim();
+  let cleaned = String(raw);
+  if (phrase) {
+    const idx = cleaned.toLowerCase().indexOf(phrase.toLowerCase());
+    if (idx !== -1)
+      cleaned = cleaned.slice(0, idx) + cleaned.slice(idx + phrase.length);
+  }
+  return sanitizeContent(cleaned.trim()) || "Review this context and help with the requested GitHub task.";
 }
 
 // src/modes/detector.ts
@@ -24051,7 +24058,8 @@ var config = {
   disallowedTools: "",
   useGitHubAppTokenExchange: false,
   githubAppTokenExchangeUrl: "",
-  githubAppTokenExchangeAudience: "garda-code-action"
+  githubAppTokenExchangeAudience: "garda-code-action",
+  fallbackModels: []
 };
 var context3 = buildContextFromPayload({
   config,

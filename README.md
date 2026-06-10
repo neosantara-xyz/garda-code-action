@@ -27,9 +27,21 @@ This action is intentionally modeled after the proven production shape of Claude
 - Optional fix mode, disabled by default
 - Git or GitHub API commit strategy for fix mode
 - MCP-style compatibility aliases for Claude Code Action-like tool names
+- Native Neosantara MCP connector support (`server_url` in `.mcp.json`) alongside local MCP servers
 - Optional `allowed_tools` / `disallowed_tools` tool policy filters
 - Trusted workflow `custom_instructions` support
 - `max_runtime_seconds` wall-clock guard for the agent loop
+- `fallback_model` for automatic retry when the primary model is unavailable (supports multiple models tried in order)
+- GitHub suggestion blocks (` ```suggestion `) in inline review comments for one-click fixes
+- Diff-hunk validation so inline comments only target lines present in the PR diff
+- TOCTOU body-safety guard (uses webhook payload body if the entity was edited after the trigger)
+- Prior PR review bodies included in context for fix-mode feedback cycles
+- Trigger comment file/line/diff-hunk location surfaced for precise "@garda fix this" targeting
+- Co-authorship trailer on commits (with username fallback)
+- Executable-bit preservation and ref-update retry in GitHub API commit strategy
+- Secret/build/lock files ignored by default (e.g. `.env`, `*.pem`, `node_modules`, lock files)
+- Fail-fast config validation at startup
+- Glanceable completion comment: `**Garda finished @user's task in Xm Ys**` with an inline action bar
 - Optional hosted GitHub App token exchange hook using GitHub Actions OIDC
 - Dry run support
 - Local event simulator with fixtures
@@ -99,9 +111,34 @@ The simulator is offline and dry-run only. It validates event parsing, trigger d
 - Fix tools are disabled unless `allow_fix=true`, `mode=fix`, and the PR is not from a fork.
 - Sensitive Garda/Neosantara/MCP/git config is restored from the PR base branch before the agent runs.
 - Secrets and common tokens are redacted from diff/tool output.
-- Inline comments are buffered and path-validated before posting.
-- Generated/build/lock files are ignored by default.
+- Inline comments are buffered and path-validated (against the PR diff hunks) before posting.
+- Generated/build/lock files and secret files (`.env`, `*.pem`, `*.key`, `.npmrc`, etc.) are ignored by default, so they are never fed to the model or written by fix tools. Extra patterns can be added via the `ignore` input.
+- Entity body/title are TOCTOU-guarded: if the issue/PR was edited at or after the trigger time, the frozen webhook payload version is used instead.
 - `display_report=false` by default so model-authored content is not written to the GitHub Step Summary unless explicitly enabled.
+- Configuration is validated at startup (fail-fast) for `NEOSANTARA_API_KEY`, `github_token`, `model`, and runtime bounds.
+
+## MCP servers
+
+Garda supports two MCP server styles via `.mcp.json` in the repository root:
+
+```json
+{
+  "mcpServers": {
+    "abmeter": {
+      "server_url": "https://mcp.abmeter.ai",
+      "authorization_token": "Bearer <token>",
+      "require_approval": "never"
+    },
+    "local-tool": {
+      "command": "npx",
+      "args": ["-y", "some-local-mcp-server"]
+    }
+  }
+}
+```
+
+- Servers with `server_url` use the **native Neosantara MCP connector** — they are passed to the Responses API as `type: "mcp"` tools and executed by the Neosantara backend. `authorization_token` is forwarded to the upstream MCP server.
+- Servers with `command` are spawned locally and their tools are registered into the agent tool loop.
 
 ## Neosantara API
 
@@ -159,6 +196,10 @@ with:
     git_commit_files
   custom_instructions: "Prioritize correctness and security over style comments."
   max_runtime_seconds: "900"
+  fallback_model: |
+    deepseek-v3
+    qwen-2.5-coder
+    # tried in order if the primary model is unavailable (503/404/422)
   commit_strategy: "github-api" # fix mode only
 ```
 

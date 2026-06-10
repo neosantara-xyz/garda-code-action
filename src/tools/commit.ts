@@ -1,12 +1,15 @@
 import { z } from "zod";
 import { execa } from "execa";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import type { GitHubClient } from "../github/types.js";
 import type { NeoTool, ToolExecutionContext } from "./types.js";
 import { splitList } from "../utils/text.js";
 import { shouldIgnore } from "../github/data.js";
+import { isRepositoryMutationAllowed } from "../github/permissions.js";
+import { validateBranchName } from "../github/trusted-config.js";
 import { subprocessEnv } from "../utils/subprocess-env.js";
 
 const SSH_SIGNING_KEY_PATH = join(homedir(), ".ssh", "garda_signing_key");
@@ -36,14 +39,27 @@ export async function setupSshSigning(
   await writeFile(SSH_SIGNING_KEY_PATH, normalizedKey, { mode: 0o600 });
 
   await execa("git", ["config", "gpg.format", "ssh"], { cwd, env });
-  await execa("git", ["config", "user.signingkey", SSH_SIGNING_KEY_PATH], { cwd, env });
+  await execa("git", ["config", "user.signingkey", SSH_SIGNING_KEY_PATH], {
+    cwd,
+    env,
+  });
   await execa("git", ["config", "commit.gpgsign", "true"], { cwd, env });
 }
 
 export async function cleanupSshSigning(): Promise<void> {
+  const { rm } = await import("node:fs/promises");
   try {
-    const { rm } = await import("node:fs/promises");
     await rm(SSH_SIGNING_KEY_PATH, { force: true });
+  } catch {
+    // Ignore error
+  }
+  // Also remove the git credential helper script if it was written.
+  try {
+    const helperPath = join(
+      process.env.RUNNER_TEMP || process.cwd(),
+      "garda-git-credential-helper.sh",
+    );
+    await rm(helperPath, { force: true });
   } catch {
     // Ignore error
   }
@@ -55,6 +71,29 @@ function validateRepoRelativePath(path: string): void {
   const parts = path.split("/");
   if (parts.some((part) => part === "" || part === "." || part === ".."))
     throw new Error(`Invalid repository path: ${path}`);
+}
+
+/**
+ * Defense-in-depth before pushing: the target branch must pass the strict
+ * branch-name whitelist AND git's own check-ref-format. This rejects option
+ * injection (leading `-`), arbitrary remotes/refspecs, and malformed refs even
+ * though we already use array args (no shell). Mirrors Claude's git-push.sh.
+ */
+async function assertSafePushTarget(
+  branch: string,
+  cwd: string,
+  env: Record<string, string | undefined>,
+): Promise<void> {
+  if (branch.startsWith("-"))
+    throw new Error(`Refusing to push to option-like ref: ${branch}`);
+  validateBranchName(branch);
+  const result = await execa("git", ["check-ref-format", "--branch", branch], {
+    cwd,
+    env,
+    reject: false,
+  });
+  if (result.exitCode !== 0)
+    throw new Error(`git rejected branch ref format: ${branch}`);
 }
 
 function committer(ctx: ToolExecutionContext) {
@@ -141,8 +180,9 @@ async function commitWithGit(
     : ctx.github.workingBranch;
   if (!targetBranch)
     throw new Error("Cannot push commit: target branch is unknown");
+  await assertSafePushTarget(targetBranch, cwd, env);
   const pushRef = `HEAD:${targetBranch}`;
-  await execa("git", ["push", "origin", pushRef], {
+  await execa("git", ["push", "origin", "--", pushRef], {
     cwd,
     stdio: "inherit",
     env,
@@ -219,6 +259,10 @@ async function commitWithGitHubApi(
     : ctx.github.workingBranch;
   if (!targetBranch)
     throw new Error("Cannot create API commit: target branch is unknown");
+  if (targetBranch.startsWith("-")) {
+    throw new Error(`Refusing to target option-like ref: ${targetBranch}`);
+  }
+  validateBranchName(targetBranch);
 
   const owner = ctx.github.repository.owner;
   const repo = ctx.github.repository.repo;
@@ -235,19 +279,29 @@ async function commitWithGitHubApi(
 
   const tree: Array<{
     path: string;
-    mode: "100644";
+    mode: "100644" | "100755";
     type: "blob";
     sha: string;
   }> = [];
   for (const file of args.files) {
-    const content = await readFile(join(cwd, file));
+    const fullPath = join(cwd, file);
+    const content = await readFile(fullPath);
+    // Preserve the executable bit so committed scripts stay runnable
+    // (matches Claude Code Action's 100644 vs 100755 handling).
+    let mode: "100644" | "100755" = "100644";
+    try {
+      const fileStat = await stat(fullPath);
+      if (fileStat.mode & fsConstants.S_IXUSR) mode = "100755";
+    } catch {
+      // Default to non-executable on stat failure
+    }
     const { data: blob } = await ctx.octokit.rest.git.createBlob({
       owner,
       repo,
       content: content.toString("base64"),
       encoding: "base64",
     });
-    tree.push({ path: file, mode: "100644", type: "blob", sha: blob.sha });
+    tree.push({ path: file, mode, type: "blob", sha: blob.sha });
   }
 
   const { data: newTree } = await ctx.octokit.rest.git.createTree({
@@ -268,13 +322,30 @@ async function commitWithGitHubApi(
   });
   if (newCommit.sha === headSha)
     return { committed: false, reason: "no changes", strategy: "github-api" };
-  await ctx.octokit.rest.git.updateRef({
-    owner,
-    repo,
-    ref: `heads/${targetBranch}`,
-    sha: newCommit.sha,
-    force: false,
-  });
+  // Retry updateRef on transient 403/409 (concurrent ref update) with backoff,
+  // matching Claude Code Action's resilient ref update.
+  let updated = false;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await ctx.octokit.rest.git.updateRef({
+        owner,
+        repo,
+        ref: `heads/${targetBranch}`,
+        sha: newCommit.sha,
+        force: false,
+      });
+      updated = true;
+      break;
+    } catch (error) {
+      const status = (error as { status?: number })?.status;
+      if (attempt >= 3 || (status !== 403 && status !== 409)) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(1000 * 2 ** (attempt - 1), 4000)),
+      );
+    }
+  }
+  if (!updated)
+    throw new Error(`Failed to update ref heads/${targetBranch} after retries`);
   try {
     await configureGitAuth(ctx, cwd);
     const syncEnv = subprocessEnv(ctx, { githubToken: true });
@@ -313,9 +384,9 @@ export const commitTools: NeoTool[] = [
     }),
     readonly: false,
     async execute(args, ctx) {
-      if (!ctx.github.config.allowFix)
+      if (!isRepositoryMutationAllowed(ctx.github))
         throw new Error(
-          "git_commit_files is disabled. Set allow_fix=true and mode=fix to enable commits.",
+          "git_commit_files is disabled. Requires allow_fix=true, mode=fix, and a non-fork pull request.",
         );
       const parsed = this.schema.parse(args) as {
         files: string[];
@@ -327,7 +398,18 @@ export const commitTools: NeoTool[] = [
         if (shouldIgnore(file, ctx.github.config.ignore))
           throw new Error(`Path is ignored by action config: ${file}`);
       }
-      const message = parsed.message || ctx.github.config.commitMessage;
+      const baseMessage = parsed.message || ctx.github.config.commitMessage;
+      // Co-authorship trailer (matches Claude Code Action format).
+      // Fall back to the actor login when the display name is unavailable,
+      // and skip only when there is no usable actor at all.
+      const coAuthorName = ctx.data.triggerDisplayName || ctx.github.actor;
+      const coAuthor =
+        coAuthorName && ctx.github.actor
+          ? `\n\nCo-authored-by: ${coAuthorName} <${ctx.github.actor}@users.noreply.github.com>`
+          : "";
+      const message = baseMessage.includes("Co-authored-by:")
+        ? baseMessage
+        : `${baseMessage}${coAuthor}`;
       const strategy = parsed.strategy || ctx.github.config.commitStrategy;
       if (ctx.github.config.dryRun)
         return { dry_run: true, files: parsed.files, strategy };

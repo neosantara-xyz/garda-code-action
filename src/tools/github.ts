@@ -12,10 +12,46 @@ function findChangedFile(
   return files.find((file) => file.filename === path);
 }
 
+/**
+ * Parse the set of RIGHT-side (new file) line numbers that appear in a unified
+ * diff patch. GitHub only accepts inline comments on lines present in the diff,
+ * so we validate the requested line against parsed hunk ranges instead of
+ * blindly trusting any positive integer.
+ */
+export function rightSideLinesInPatch(patch?: string): Set<number> {
+  const lines = new Set<number>();
+  if (!patch) return lines;
+  let newLine = 0;
+  for (const row of patch.split("\n")) {
+    const hunk = row.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk && hunk[1]) {
+      newLine = Number.parseInt(hunk[1], 10);
+      continue;
+    }
+    if (row.startsWith("+")) {
+      // Added line — commentable on RIGHT side
+      lines.add(newLine);
+      newLine += 1;
+    } else if (row.startsWith("-")) {
+      // Removed line — does not advance new-file counter
+    } else if (!row.startsWith("\\")) {
+      // Context line — advances new-file counter, also commentable
+      lines.add(newLine);
+      newLine += 1;
+    }
+  }
+  return lines;
+}
+
 function isLineInPatch(file: { patch?: string }, line: number): boolean {
+  if (!Number.isInteger(line) || line <= 0) return false;
+  // If no patch is available (binary, too large), stay lenient and let the
+  // GitHub API do final validation.
   if (!file.patch) return true;
-  // Best effort: GitHub API will do the final validation. We keep this lenient.
-  return Number.isInteger(line) && line > 0;
+  const validLines = rightSideLinesInPatch(file.patch);
+  // Empty parse result (unexpected patch format) — fall back to lenient.
+  if (validLines.size === 0) return true;
+  return validLines.has(line);
 }
 
 export const githubTools: NeoTool[] = [
@@ -44,7 +80,11 @@ export const githubTools: NeoTool[] = [
   {
     name: "github_buffer_inline_comment",
     description:
-      "Buffer an inline PR comment candidate. The action validates and posts buffered comments at the end.",
+      "Buffer an inline PR comment candidate. The action validates and posts buffered comments at the end. " +
+      "For applicable fixes, include a GitHub suggestion block in the body so the PR author can apply it in one click:\n" +
+      "```suggestion\n<replacement code for the commented line range>\n```\n" +
+      "The suggestion replaces the ENTIRE line range (single `line`, or `start_line` to `line`). " +
+      "Ensure the replacement is syntactically complete and correctly indented.",
     schema: z.object({
       path: z.string(),
       line: z.number(),
@@ -80,6 +120,56 @@ export const githubTools: NeoTool[] = [
         side: parsed.side || "RIGHT",
       });
       return { buffered: true, total: ctx.inlineBuffer.length };
+    },
+  },
+  {
+    name: "github_get_workflow_run_details",
+    description:
+      "Get detailed info for a GitHub Actions workflow run including jobs, steps, and annotations. Requires actions:read.",
+    schema: z.object({
+      run_id: z.number(),
+    }),
+    readonly: true,
+    async execute(args, ctx) {
+      const parsed = this.schema.parse(args) as { run_id: number };
+      const { owner, repo } = ctx.github.repository;
+      const [runRes, jobsRes] = await Promise.all([
+        ctx.octokit.rest.actions.getWorkflowRun({
+          owner,
+          repo,
+          run_id: parsed.run_id,
+        }),
+        ctx.octokit.rest.actions.listJobsForWorkflowRun({
+          owner,
+          repo,
+          run_id: parsed.run_id,
+          per_page: 30,
+        }),
+      ]);
+      return {
+        run: {
+          id: runRes.data.id,
+          name: runRes.data.name,
+          status: runRes.data.status,
+          conclusion: runRes.data.conclusion,
+          html_url: runRes.data.html_url,
+          created_at: runRes.data.created_at,
+          updated_at: runRes.data.updated_at,
+        },
+        jobs: jobsRes.data.jobs.map((job) => ({
+          id: job.id,
+          name: job.name,
+          status: job.status,
+          conclusion: job.conclusion,
+          html_url: job.html_url,
+          steps: (job.steps || []).slice(0, 20).map((s) => ({
+            name: s.name,
+            status: s.status,
+            conclusion: s.conclusion,
+            number: s.number,
+          })),
+        })),
+      };
     },
   },
   {

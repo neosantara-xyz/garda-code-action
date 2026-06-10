@@ -2,6 +2,11 @@ import type { NeoContext } from "./context.js";
 import type { CommentLike, GitHubClient } from "./types.js";
 
 const MARKER = "<!-- garda-code-action-comment -->";
+const SPINNER_HTML =
+  '<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />';
+
+// Numeric GitHub App bot IDs for reliable sticky comment matching.
+const GARDA_BOT_APP_IDS = new Set([209825114]);
 
 export type TrackingComment = {
   id: number;
@@ -13,6 +18,8 @@ function isBotComment(comment: CommentLike, context: NeoContext): boolean {
   const login = String(comment.user?.login || "").toLowerCase();
   const type = String(comment.user?.type || "").toLowerCase();
   const botName = String(context.config.botName || "").toLowerCase();
+  const userId = (comment.user as any)?.id;
+  if (userId && GARDA_BOT_APP_IDS.has(userId)) return true;
   return (
     type === "bot" ||
     login === botName ||
@@ -30,7 +37,7 @@ export function renderProgress(
   const title = context.config.reviewLanguage.toLowerCase().startsWith("id")
     ? "Garda Code sedang bekerja"
     : "Garda Code is working";
-  return `${MARKER}\n### ${title}\n\n${status}\n\n${body ? `${body}\n\n` : ""}[View workflow run](${context.runUrl})`;
+  return `${MARKER}\n### ${title}… ${SPINNER_HTML}\n\n${status}\n\n${body ? `${body}\n\n` : ""}[View workflow run](${context.runUrl})`;
 }
 
 export async function findStickyComment(

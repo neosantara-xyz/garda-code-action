@@ -10,6 +10,12 @@ type ExchangeResponse = {
 async function exchangeOidcForGitHubToken(
   config: ActionConfig,
 ): Promise<string> {
+  // SECURITY NOTE: The token-exchange endpoint MUST independently validate that
+  // the calling workflow exists on the repository's default branch before
+  // issuing an elevated GitHub App token. Without that server-side check, a
+  // malicious PR could add a workflow (e.g. on pull_request_target) and mint a
+  // token for an unreviewed workflow. This client only forwards the OIDC token;
+  // it cannot enforce that guard locally. (Mirrors Claude's WorkflowValidation.)
   if (!config.githubAppTokenExchangeUrl) {
     throw new Error(
       "use_github_app_token_exchange=true requires github_app_token_exchange_url.",

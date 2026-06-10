@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { execa } from "execa";
 import type { NeoContext } from "./context.js";
 import type { GitHubClient } from "./types.js";
 
@@ -44,6 +45,33 @@ export async function finalizeCreatedBranch(
   }
 
   if (!hasChanges && context.config.cleanupEmptyBranch) {
+    // Check for uncommitted local changes before deleting
+    try {
+      const cwd = process.env.GITHUB_WORKSPACE || process.cwd();
+      const { stdout } = await execa("git", ["status", "--porcelain"], { cwd });
+      if (stdout.trim().length > 0) {
+        core.info(
+          `Found uncommitted changes on ${branchName}, committing before finalization.`,
+        );
+        await execa("git", ["add", "-A"], { cwd });
+        await execa(
+          "git",
+          [
+            "commit",
+            "-m",
+            `Auto-commit: Save changes from Garda Code\n\nRun ID: ${context.runId}`,
+          ],
+          { cwd },
+        );
+        await execa("git", ["push", "origin", branchName], { cwd });
+        hasChanges = true;
+      }
+    } catch {
+      // If git status/commit fails, fall through to deletion check
+    }
+  }
+
+  if (!hasChanges && context.config.cleanupEmptyBranch) {
     try {
       await octokit.rest.git.deleteRef({
         owner,
@@ -73,11 +101,22 @@ export async function finalizeCreatedBranch(
     baseBranch,
   )}...${encodeURIComponent(branchName)}?quick_pull=1&title=${title}&body=${body}`;
 
+  // Safety net: drop the PR link if the constructed URL is somehow malformed
+  // (e.g. an unusual branch name that slips through), rather than emitting a
+  // broken link into the comment.
+  let safeCreatePrUrl: string | undefined = createPrUrl;
+  try {
+    new URL(createPrUrl);
+  } catch {
+    safeCreatePrUrl = undefined;
+    core.warning(`Skipping malformed Create PR URL for branch ${branchName}.`);
+  }
+
   return {
     branchName,
     hasChanges: true,
     deleted: false,
     branchUrl,
-    createPrUrl,
+    createPrUrl: safeCreatePrUrl,
   };
 }

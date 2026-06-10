@@ -43,6 +43,38 @@ const bool = (name: string, fallback = false) => {
   return raw.toLowerCase() === "true";
 };
 
+export const DEFAULT_IGNORE_PATTERNS = [
+  // Secrets / credentials — never feed to the model or allow writes
+  "**/.env",
+  "**/.env.*",
+  "**/*.pem",
+  "**/*.key",
+  "**/id_rsa",
+  "**/id_ed25519",
+  "**/.npmrc",
+  "**/.netrc",
+  "**/credentials",
+  "**/*.p12",
+  "**/*.pfx",
+  // Generated / build / dependency dirs
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/out/**",
+  "**/.next/**",
+  "**/coverage/**",
+  "**/vendor/**",
+  "**/target/**",
+  // Lock files
+  "**/package-lock.json",
+  "**/pnpm-lock.yaml",
+  "**/yarn.lock",
+  "**/bun.lockb",
+  "**/Cargo.lock",
+  "**/poetry.lock",
+  "**/composer.lock",
+];
+
 const int = (name: string, fallback: number) => {
   const raw = getVal(name, String(fallback));
   const value = Number.parseInt(raw, 10);
@@ -102,6 +134,7 @@ export type ActionConfig = {
   useGitHubAppTokenExchange: boolean;
   githubAppTokenExchangeUrl: string;
   githubAppTokenExchangeAudience: string;
+  fallbackModels: string[];
   maxSteps: number;
   maxDiffChars: number;
   maxFileChars: number;
@@ -193,6 +226,10 @@ export function readConfig(): ActionConfig {
       "github_app_token_exchange_audience",
       "garda-code-action",
     ),
+    fallbackModels: getVal("fallback_model", "")
+      .split(/[\n,]/)
+      .map((m) => m.trim())
+      .filter(Boolean),
     maxSteps: int("max_steps", 40),
     maxDiffChars: int("max_diff_chars", 80000),
     maxFileChars: int("max_file_chars", 30000),
@@ -206,9 +243,45 @@ export function readConfig(): ActionConfig {
     maxImageBytes: int("max_image_bytes", 1572864),
     cleanupEmptyBranch: bool("cleanup_empty_branch", true),
     restoreTrustedConfig: bool("restore_trusted_config", true),
-    ignore: getVal("ignore", ""),
+    ignore: [getVal("ignore", ""), DEFAULT_IGNORE_PATTERNS.join(",")]
+      .filter(Boolean)
+      .join(","),
     dryRun: bool("dry_run", false),
     showFullOutput: bool("show_full_output", false),
     displayReport: bool("display_report", false),
   };
+}
+
+/**
+ * Fail-fast validation of required runtime configuration. Collects ALL problems
+ * and reports them at once instead of failing deep inside the run.
+ */
+export function validateConfig(config: ActionConfig): void {
+  const problems: string[] = [];
+
+  if (!process.env.NEOSANTARA_API_KEY) {
+    problems.push(
+      "NEOSANTARA_API_KEY environment variable is required (set it as a repository secret).",
+    );
+  }
+  if (!config.githubToken && !config.useGitHubAppTokenExchange) {
+    problems.push(
+      "github_token is required (provide via input, GITHUB_TOKEN, or enable use_github_app_token_exchange).",
+    );
+  }
+  if (!config.model || !config.model.trim()) {
+    problems.push("model must be a non-empty Neosantara model id.");
+  }
+  if (config.maxSteps <= 0) {
+    problems.push("max_steps must be greater than 0.");
+  }
+  if (config.maxRuntimeSeconds <= 0) {
+    problems.push("max_runtime_seconds must be greater than 0.");
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Garda Code Action configuration is invalid:\n- ${problems.join("\n- ")}`,
+    );
+  }
 }

@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { readConfig, type ActionConfig } from "./config.js";
+import { readConfig, validateConfig, type ActionConfig } from "./config.js";
 import { resolveGitHubToken } from "./github/token.js";
 import { parseContext, type NeoContext } from "./github/context.js";
 import { detectExecutionMode } from "./modes/detector.js";
@@ -32,11 +32,11 @@ import {
   finalizeCreatedBranch,
   type BranchFinalization,
 } from "./github/branch-cleanup.js";
+import { composeFinalComment } from "./github/comment-format.js";
 import type { InlineComment } from "./tools/types.js";
 import type { GitHubClient } from "./github/types.js";
 import { formatTranscriptToMarkdown } from "./utils/format-transcript.js";
 import { cleanupSshSigning } from "./tools/commit.js";
-
 
 async function writeExecutionTranscript(
   context: NeoContext,
@@ -75,24 +75,8 @@ async function writeExecutionTranscript(
   return file;
 }
 
-function addBranchLinks(
-  context: NeoContext,
-  body: string,
-  branch: BranchFinalization,
-): string {
-  if (!context.createdBranch && !branch.branchName) return body;
-  if (branch.deleted) {
-    return `${body}\n\n**Branch**: \`${branch.branchName}\` was deleted because no changes were committed.\n`;
-  }
-  if (!branch.hasChanges || !branch.branchName) return body;
-  const lines = [body, `\n**Branch**: \`${branch.branchName}\``];
-  if (branch.branchUrl) lines.push(`\n[View branch](${branch.branchUrl})`);
-  if (branch.createPrUrl)
-    lines.push(`\n[Create pull request](${branch.createPrUrl})`);
-  return `${lines.join("\n")}\n`;
-}
-
 async function main(): Promise<void> {
+  const startedAt = Date.now();
   let config: ActionConfig | undefined;
   let context: NeoContext | undefined;
   let octokit: GitHubClient | undefined;
@@ -101,6 +85,7 @@ async function main(): Promise<void> {
 
   try {
     config = readConfig();
+    validateConfig(config);
     await resolveGitHubToken(config);
     context = parseContext(config);
     octokit = github.getOctokit(config.githubToken);
@@ -133,10 +118,20 @@ async function main(): Promise<void> {
 
     if (context.config.mode === "auto" && context.config.allowFix) {
       const request = extractUserRequest(context);
+      const lower = request.toLowerCase();
+      // Negation guards — avoid switching to fix mode when the user explicitly
+      // does NOT want changes ("don't fix", "jangan perbaiki", "just explain").
+      const negated =
+        /\b(don'?t|do not|jangan|tidak usah|no need to|just explain|only explain|hanya jelaskan)\b[^.!?]*\b(fix|perbaiki|patch|change|ubah)\b/i.test(
+          request,
+        );
       const isFixRequest =
-        /\bfix\b/i.test(request) ||
-        /\bperbaiki\b/i.test(request) ||
-        /\bpatch\b/i.test(request);
+        !negated &&
+        (/\bfix\b/i.test(lower) ||
+          /\bperbaiki\b/i.test(lower) ||
+          /\bpatch\b/i.test(lower) ||
+          /\bimplement\b/i.test(lower) ||
+          /\bperbaikan\b/i.test(lower));
       if (isFixRequest) {
         core.info(
           `Detected fix/patch request in auto mode: "${request}". Dynamically switching mode to 'fix'.`,
@@ -278,26 +273,24 @@ async function main(): Promise<void> {
       : inlineClassification.decisions.length
         ? `\n- Inline classifier: heuristic, ${inlineClassification.skipped} rejected`
         : "";
-    const finalBody = `### Garda Code Action result
-
-${result.text}
-
----
-
-**Details**
+    const details = `<details>
+<summary>Run details</summary>
 
 - Model: \`${config.model}\`
 - Responses API response id: \`${result.responseId || "n/a"}\`
 - Tool loop steps: ${result.steps}
 - Inline comments: ${posted.posted} posted, ${posted.skipped} skipped${reviewLine}${classifierLine}
 - Execution transcript: \`${executionFile}\`
-`;
-    await updateTrackingComment(
-      octokit,
+</details>`;
+    const finalBody = composeFinalComment({
       context,
-      trackingComment,
-      addBranchLinks(context, finalBody, branchFinalization),
-    );
+      actor: context.actor,
+      durationMs: Date.now() - startedAt,
+      branch: branchFinalization,
+      resultText: result.text,
+      details,
+    });
+    await updateTrackingComment(octokit, context, trackingComment, finalBody);
 
     core.setOutput("conclusion", "success");
     core.setOutput("summary", result.text.slice(0, 4000));
@@ -338,7 +331,16 @@ ${result.text}
           octokit,
           context,
           trackingComment,
-          `### Garda Code Action failed\n\n\`\`\`text\n${message.slice(0, 4000)}\n\`\`\``,
+          composeFinalComment({
+            context,
+            actor: context.actor,
+            durationMs: Date.now() - startedAt,
+            branch: { hasChanges: false, deleted: false },
+            resultText: "",
+            details: "",
+            failed: true,
+            errorDetails: message.slice(0, 4000),
+          }),
         );
       } catch (updateError) {
         core.warning(

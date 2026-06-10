@@ -118,6 +118,7 @@ const config: ActionConfig = {
   useGitHubAppTokenExchange: false,
   githubAppTokenExchangeUrl: "",
   githubAppTokenExchangeAudience: "garda-code-action",
+  fallbackModels: [],
 };
 
 const context = buildContextFromPayload({
