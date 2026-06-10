@@ -1,11 +1,13 @@
 {
   "name": "Garda Code",
+  "description": "Protect your code with Garda — AI-powered code review for GitHub pull requests and issues, powered by Neosantara. Garda reviews PRs automatically, leaves precise inline comments, flags security and performance issues, and posts one-click suggested fixes. Mention @garda to ask questions or request a review on demand.",
   "url": "https://neosantara.xyz",
   "hook_attributes": {
     "active": false
   },
   "redirect_url": "https://neosantara.xyz",
-  "public": false,
+  "setup_url": "https://github.com/neosantara-xyz/garda-code-action#quickstart",
+  "public": true,
   "default_permissions": {
     "contents": "read",
     "issues": "write",
@@ -13,5 +15,11 @@
     "actions": "read",
     "metadata": "read"
   },
-  "default_events": []
+  "default_events": [
+    "issue_comment",
+    "issues",
+    "pull_request",
+    "pull_request_review",
+    "pull_request_review_comment"
+  ]
 }
