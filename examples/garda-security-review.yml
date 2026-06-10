@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: neosantara/garda-code-action@v1
+      - uses: neosantara-xyz/garda-code-action@v1
         with:
           trigger_phrase: "@garda"
           mode: "security"

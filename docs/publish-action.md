@@ -13,7 +13,7 @@ garda-code-action
 Recommended use reference after release:
 
 ```yaml
-uses: neosantara/garda-code-action@v1
+uses: neosantara-xyz/garda-code-action@v1
 ```
 
 ## Publish steps
@@ -23,7 +23,7 @@ git init
 git add .
 git commit -m "feat: initial garda code action"
 git branch -M main
-git remote add origin git@github.com:neosantara/garda-code-action.git
+git remote add origin git@github.com:neosantara-xyz/garda-code-action.git
 git push -u origin main
 ```
 

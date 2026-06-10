@@ -1,50 +1,37 @@
 # Garda Code Action
 
-Production-grade GitHub automation powered by the Neosantara Responses API.
+**Protect your code with Garda** — an AI-powered code review action for GitHub pull requests and issues, powered by the Neosantara Responses API.
 
-This action is intentionally modeled after the proven production shape of Claude Code Action: event orchestration, trigger validation, permission guards, progress comments, bounded tools, buffered inline review comments, and a stateful agent loop. The model layer is Neosantara, using the OpenAI-compatible `/v1/responses` endpoint with `previous_response_id`.
+Garda reviews your pull requests automatically, leaves precise inline comments on the exact lines that need attention, flags security and performance issues, and can even open one-click suggested fixes. Mention `@garda` in any comment to ask questions or request a focused review on demand. It runs entirely on your own GitHub runner.
+
+This action follows the proven production shape of Claude Code Action — event orchestration, trigger validation, permission guards, progress comments, bounded tools, and buffered inline review comments — with the model layer served by Neosantara's OpenAI-compatible `/v1/responses` endpoint.
 
 ## Features
 
-- Node 24 JavaScript action (`runs.using: node24`)
-- Neosantara Responses API with stateful conversation
-- `@garda` tag mode and workflow prompt agent mode
-- Human/bot and write-permission guard
-- Fork PR repository-mutation guard
-- Trusted config restore from the PR base branch
-- Sticky progress comment
-- Sanitized PR diff and contextual comments
-- Tool loop with bounded repository and GitHub tools
-- Responses API retry/rate-limit handling
-- Repeated tool-call and per-step tool-call guards
-- Buffered inline comments that are validated before posting
-- Model-based inline comment classifier with heuristic fallback
-- Batch PR review posting with fallback to individual review comments
+- 🔍 **Automatic PR Code Review** — Reviews every pull request on open, push, and ready-for-review, with no extra prompting required.
+- 💬 **Precise Inline Comments** — Posts review comments on the exact diff lines, validated against the PR diff hunks so feedback always lands where it belongs.
+- ✨ **One-Click Suggested Fixes** — Emits GitHub `suggestion` blocks so authors can apply Garda's proposed change with a single click.
+- 🔒 **Security-Focused Review** — Dedicated `security` mode with false-positive filtering for input validation, authn/authz, and injection risks.
+- ⚡ **Performance & Quality Insights** — Surfaces bottlenecks, edge cases, and maintainability concerns alongside correctness.
+- 🗣️ **Multilingual Review** — Set `review_language` (e.g. `id` for Bahasa Indonesia, `en` for English) to get feedback in your team's language.
+- 🤖 **`@garda` Mentions** — Ask questions or request a targeted review by mentioning `@garda` in a comment, including precise "fix this line" targeting from a review comment.
+- 🛠️ **Optional Fix Mode** — When explicitly enabled, Garda can commit fixes via git or the GitHub API, with co-authorship trailers and fork/permission guards.
+- 📊 **CI & Release Insight** — `ci-analysis` mode inspects CI job logs; `release-notes` mode summarizes changes for releases.
+- 📋 **Sticky Progress Comment** — A single comment tracks review progress and ends with a glanceable completion summary and action bar.
+- 🔌 **MCP Support** — Native Neosantara MCP connector (`server_url` in `.mcp.json`) plus local MCP servers, with optional `allowed_tools`/`disallowed_tools` policy filters.
+
+### Under the hood
+
+- Node 24 JavaScript action (`runs.using: node24`) with a stateful Neosantara Responses API conversation (`previous_response_id`)
+- Human/bot, write-permission, and fork PR repository-mutation guards
+- Trusted config restore from the PR base branch before the agent runs
+- Sanitized PR diff and contextual comments; secrets and common tokens redacted from diff/tool output
+- Bounded repository and GitHub tool loop with repeated/per-step tool-call guards and retry/rate-limit handling
+- Model-based inline comment classifier with heuristic fallback; batch PR review posting with per-comment fallback
 - GitHub user-attachment image context for multimodal review
-- Empty issue-fix branch cleanup after runs with no committed changes
-- Execution transcript output (`execution_file`) for debugging and audit trails
-- Optional compact fix-request hints on inline comments
-- Optional fix mode, disabled by default
-- Git or GitHub API commit strategy for fix mode
-- MCP-style compatibility aliases for Claude Code Action-like tool names
-- Native Neosantara MCP connector support (`server_url` in `.mcp.json`) alongside local MCP servers
-- Optional `allowed_tools` / `disallowed_tools` tool policy filters
-- Trusted workflow `custom_instructions` support
-- `max_runtime_seconds` wall-clock guard for the agent loop
 - `fallback_model` for automatic retry when the primary model is unavailable (supports multiple models tried in order)
-- GitHub suggestion blocks (` ```suggestion `) in inline review comments for one-click fixes
-- Diff-hunk validation so inline comments only target lines present in the PR diff
-- TOCTOU body-safety guard (uses webhook payload body if the entity was edited after the trigger)
-- Prior PR review bodies included in context for fix-mode feedback cycles
-- Trigger comment file/line/diff-hunk location surfaced for precise "@garda fix this" targeting
-- Co-authorship trailer on commits (with username fallback)
-- Executable-bit preservation and ref-update retry in GitHub API commit strategy
-- Secret/build/lock files ignored by default (e.g. `.env`, `*.pem`, `node_modules`, lock files)
-- Fail-fast config validation at startup
-- Glanceable completion comment: `**Garda finished @user's task in Xm Ys**` with an inline action bar
-- Optional hosted GitHub App token exchange hook using GitHub Actions OIDC
-- Dry run support
-- Local event simulator with fixtures
+- TOCTOU body-safety guard, secret/build/lock files ignored by default, fail-fast config validation
+- Execution transcript output (`execution_file`), empty issue-fix branch cleanup, dry run support, and a local event simulator
 
 ## Usage
 
@@ -72,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: neosantara/garda-code-action@v1
+      - uses: neosantara-xyz/garda-code-action@v1
         with:
           trigger_phrase: "@garda"
           mode: "auto"
@@ -91,6 +78,20 @@ jobs:
 - `ci-analysis`: inspect CI status and job logs when available.
 - `release-notes`: summarize changes for release notes.
 - `fix`: enables write/commit tools only when `allow_fix: true`.
+
+## Example workflows
+
+Ready-to-use workflows live in [`examples/`](examples/):
+
+| Workflow | What it does |
+| --- | --- |
+| [`garda-review.yml`](examples/garda-review.yml) | Automatic PR review plus `@garda` mentions on comments |
+| [`garda-review-comprehensive.yml`](examples/garda-review-comprehensive.yml) | In-depth review steered by `custom_instructions` (quality, security, performance, testing, docs) |
+| [`garda-review-filtered-paths.yml`](examples/garda-review-filtered-paths.yml) | Review only when critical paths change (auth, payments, infra) |
+| [`garda-security-review.yml`](examples/garda-security-review.yml) | Security-focused review triggered by `@garda security` |
+| [`garda-readonly-locked-tools.yml`](examples/garda-readonly-locked-tools.yml) | Read-only review with a locked-down tool policy |
+| [`garda-review-with-github-app.yml`](examples/garda-review-with-github-app.yml) | Review using a GitHub App token so comments appear as your bot |
+| [`garda-fix-with-github-app.yml`](examples/garda-fix-with-github-app.yml) | Fix mode (commits suggested changes) with a GitHub App token |
 
 ## Local simulation
 
@@ -171,7 +172,7 @@ For production use, generate a short-lived GitHub App token before running this 
     fetch-depth: 0
     token: ${{ steps.app-token.outputs.token }}
 
-- uses: neosantara/garda-code-action@v1
+- uses: neosantara-xyz/garda-code-action@v1
   with:
     github_token: ${{ steps.app-token.outputs.token }}
     trigger_phrase: "@garda"

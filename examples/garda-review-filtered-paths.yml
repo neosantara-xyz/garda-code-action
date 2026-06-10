@@ -1,0 +1,44 @@
+name: Garda Path-Filtered Review
+
+# Run Garda only when critical paths change (e.g. auth, payments, infra).
+# The job-level `paths` filter keeps reviews focused and saves CI minutes.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "src/auth/**"
+      - "src/payments/**"
+      - "infra/**"
+      - "**/*.tf"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  garda-critical-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: neosantara-xyz/garda-code-action@v1
+        with:
+          trigger_phrase: "@garda"
+          mode: "security"
+          model: "grok-code-fast"
+          review_language: "en"
+          # Skip generated and vendored files even within critical paths
+          ignore: |
+            **/*.generated.*
+            **/__snapshots__/**
+          custom_instructions: |
+            These files touch authentication, payments, or infrastructure.
+            Prioritize security and correctness over style. Flag any change
+            that weakens access control, secret handling, or input validation.
+        env:
+          NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}
