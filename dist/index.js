@@ -39765,7 +39765,7 @@ async function createOrUpdateTrackingComment(octokit, context3, existing, status
     });
     return { id: data2.id, html_url: data2.html_url, kind };
   }
-  const sticky = context3.config.useStickyComment ? await findStickyComment(octokit, context3) : null;
+  const sticky = context3.config.useStickyComment && context3.eventName !== "pull_request_review_comment" ? await findStickyComment(octokit, context3) : null;
   if (sticky?.id) {
     const { data: data2 } = await octokit.rest.issues.updateComment({
       owner,
