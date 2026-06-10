@@ -41,6 +41,7 @@ const config: ActionConfig = {
   maxRepeatedToolCalls: 3,
   retryMaxAttempts: 3,
   maxRuntimeSeconds: 900,
+  maxOutputTokens: 8000,
   includeImageContext: true,
   maxCommentImages: 5,
   maxImageBytes: 1572864,
@@ -63,7 +64,7 @@ const config: ActionConfig = {
   useGitHubAppTokenExchange: "off",
   githubAppTokenExchangeUrl: "",
   githubAppTokenExchangeAudience: "garda-code-action",
-      fallbackModels: [],
+  fallbackModels: [],
 };
 
 function fixture(name: string) {

@@ -14,6 +14,7 @@ type ResponseRequest = {
   input?: Array<{ output?: string; content?: Array<{ text?: string }> }>;
   tools?: Array<{ name?: string }>;
   tool_choice?: string;
+  max_output_tokens?: number;
 };
 
 function hasToolName(tool: unknown, name: string): boolean {
@@ -79,6 +80,7 @@ function context(): NeoContext {
       maxRepeatedToolCalls: 1,
       retryMaxAttempts: 1,
       maxRuntimeSeconds: 900,
+      maxOutputTokens: 8000,
       includeImageContext: true,
       maxCommentImages: 5,
       maxImageBytes: 1572864,
@@ -225,6 +227,8 @@ describe("Responses runner hardening", () => {
     expect(requests.at(2)?.input?.at(0)?.output).toContain(
       "Tool repetition guard",
     );
+    // The model output cap is sent on every request.
+    expect(requests.at(0)?.max_output_tokens).toBe(8000);
   });
 
   it("forces a final text report when the step budget is nearly exhausted", async () => {

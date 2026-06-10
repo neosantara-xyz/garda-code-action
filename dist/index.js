@@ -29786,6 +29786,7 @@ function readConfig() {
     maxRepeatedToolCalls: int("max_repeated_tool_calls", 3),
     retryMaxAttempts: int("retry_max_attempts", 3),
     maxRuntimeSeconds: int("max_runtime_seconds", 900),
+    maxOutputTokens: int("max_output_tokens", 8e3),
     includeImageContext: bool("include_image_context", true),
     maxCommentImages: int("max_comment_images", 5),
     maxImageBytes: int("max_image_bytes", 1572864),
@@ -29817,6 +29818,9 @@ function validateConfig(config) {
   }
   if (config.maxRuntimeSeconds <= 0) {
     problems.push("max_runtime_seconds must be greater than 0.");
+  }
+  if (config.maxOutputTokens <= 0) {
+    problems.push("max_output_tokens must be greater than 0.");
   }
   if (problems.length > 0) {
     throw new Error(
@@ -47706,6 +47710,7 @@ async function runNeoAgent(params) {
           previous_response_id: previousResponseId,
           tools: [...tools, ...nativeMcpTools],
           tool_choice: forceFinish ? "none" : "auto",
+          max_output_tokens: params.github.config.maxOutputTokens,
           store: true,
           ...params.github.config.fallbackModels.length > 0 ? { __fallbackModels: params.github.config.fallbackModels } : {},
           metadata: {

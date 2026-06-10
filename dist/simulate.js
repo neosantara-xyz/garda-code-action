@@ -24037,6 +24037,7 @@ var config = {
   maxRepeatedToolCalls: 3,
   retryMaxAttempts: 3,
   maxRuntimeSeconds: 900,
+  maxOutputTokens: 8e3,
   includeImageContext: true,
   maxCommentImages: 5,
   maxImageBytes: 1572864,

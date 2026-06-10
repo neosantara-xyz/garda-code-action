@@ -188,6 +188,7 @@ with:
     git_commit_files
   custom_instructions: "Prioritize correctness and security over style comments."
   max_runtime_seconds: "900"
+  max_output_tokens: "8000" # cap model output per turn (cost/runaway guard)
   fallback_model: |
     claude-opus-4-6
     claude-sonnet-4-6
