@@ -217,3 +217,7 @@ Important outputs:
 ## Publishing
 
 See [`docs/publish-action.md`](docs/publish-action.md). The repository must be public for GitHub Marketplace, and `action.yml` plus the bundled `dist/index.js` must be committed at the repository root.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
