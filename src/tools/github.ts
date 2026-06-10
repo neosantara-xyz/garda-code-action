@@ -334,6 +334,48 @@ async function postIndividualComments(
   return { posted, skipped };
 }
 
+/**
+ * Normalize a comment body for duplicate detection: drop suggestion blocks,
+ * collapse whitespace, lowercase. Two findings on the same line with the same
+ * normalized text are treated as duplicates.
+ */
+function normalizeForDedup(body: string): string {
+  return body
+    .replace(/```suggestion[\s\S]*?```/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .slice(0, 200);
+}
+
+/**
+ * Fetch existing PR review comments and return a set of "path:line:normalized"
+ * keys, so we can skip re-posting findings that already exist (e.g. on a
+ * synchronize re-review or a repeated @garda mention).
+ */
+async function existingInlineKeys(
+  octokit: GitHubClient,
+  ctx: import("../github/context.js").NeoContext,
+): Promise<Set<string>> {
+  const keys = new Set<string>();
+  if (!ctx.entityNumber) return keys;
+  try {
+    const { data } = await octokit.rest.pulls.listReviewComments({
+      owner: ctx.repository.owner,
+      repo: ctx.repository.repo,
+      pull_number: ctx.entityNumber,
+      per_page: 100,
+    });
+    for (const c of data) {
+      const line = c.line ?? c.original_line ?? "?";
+      keys.add(`${c.path}:${line}:${normalizeForDedup(c.body || "")}`);
+    }
+  } catch {
+    // If we cannot list existing comments, fail open (post anyway).
+  }
+  return keys;
+}
+
 export async function postBufferedInlineComments(
   octokit: GitHubClient,
   ctx: import("../github/context.js").NeoContext,
@@ -347,12 +389,23 @@ export async function postBufferedInlineComments(
   )
     return { posted: 0, skipped: comments.length };
   const selected = comments.slice(0, ctx.config.maxInlineComments);
-  const postable = selected.filter((comment) =>
+  const filterPassed = selected.filter((comment) =>
     shouldPostComment(ctx, comment),
   );
+
+  // Deduplicate against inline comments already on the PR so a re-review does
+  // not post the same finding twice.
+  const existing = await existingInlineKeys(octokit, ctx);
+  const postable = filterPassed.filter((comment) => {
+    const key = `${comment.path}:${comment.line}:${normalizeForDedup(comment.body)}`;
+    return !existing.has(key);
+  });
+  const dedupedOut = filterPassed.length - postable.length;
+
   const skippedByFilter =
     selected.length -
-    postable.length +
+    filterPassed.length +
+    dedupedOut +
     Math.max(0, comments.length - selected.length);
   if (postable.length === 0) return { posted: 0, skipped: skippedByFilter };
 

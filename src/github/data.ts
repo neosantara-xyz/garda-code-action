@@ -493,6 +493,18 @@ export function formatGitHubContext(
       `Branch: ${data.entity.head?.ref || "?"} -> ${data.entity.base?.ref || "?"}`,
     );
     lines.push(`Head SHA: ${data.entity.head?.sha || "?"}`);
+    // Incremental-update awareness: on a `synchronize` event new commits were
+    // pushed to an existing PR. Tell the agent so it focuses on what changed
+    // and does not repeat findings it (or prior reviews) already raised.
+    if (
+      context.eventName === "pull_request" &&
+      context.eventAction === "synchronize"
+    ) {
+      lines.push(
+        "Update: this is a push of new commits to an existing PR (synchronize). " +
+          "Prior review comments are listed below — do NOT repeat issues already raised that are still unaddressed, and acknowledge any that the new commits now fix.",
+      );
+    }
     lines.push(`Changed files: ${data.changedFiles.length}`);
     lines.push("Changed file list:");
     for (const file of data.changedFiles)

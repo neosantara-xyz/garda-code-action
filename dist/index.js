@@ -39635,6 +39635,11 @@ ${sanitizeContent(c3.diff_hunk)}`);
       `Branch: ${data.entity.head?.ref || "?"} -> ${data.entity.base?.ref || "?"}`
     );
     lines.push(`Head SHA: ${data.entity.head?.sha || "?"}`);
+    if (context3.eventName === "pull_request" && context3.eventAction === "synchronize") {
+      lines.push(
+        "Update: this is a push of new commits to an existing PR (synchronize). Prior review comments are listed below \u2014 do NOT repeat issues already raised that are still unaddressed, and acknowledge any that the new commits now fix."
+      );
+    }
     lines.push(`Changed files: ${data.changedFiles.length}`);
     lines.push("Changed file list:");
     for (const file of data.changedFiles)
@@ -47045,14 +47050,41 @@ async function postIndividualComments(octokit, ctx, comments) {
   }
   return { posted, skipped };
 }
+function normalizeForDedup(body) {
+  return body.replace(/```suggestion[\s\S]*?```/gi, "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 200);
+}
+async function existingInlineKeys(octokit, ctx) {
+  const keys = /* @__PURE__ */ new Set();
+  if (!ctx.entityNumber) return keys;
+  try {
+    const { data } = await octokit.rest.pulls.listReviewComments({
+      owner: ctx.repository.owner,
+      repo: ctx.repository.repo,
+      pull_number: ctx.entityNumber,
+      per_page: 100
+    });
+    for (const c3 of data) {
+      const line = c3.line ?? c3.original_line ?? "?";
+      keys.add(`${c3.path}:${line}:${normalizeForDedup(c3.body || "")}`);
+    }
+  } catch {
+  }
+  return keys;
+}
 async function postBufferedInlineComments(octokit, ctx, comments) {
   if (!ctx.isPR || !ctx.entityNumber || !ctx.config.inlineComments || ctx.config.dryRun)
     return { posted: 0, skipped: comments.length };
   const selected = comments.slice(0, ctx.config.maxInlineComments);
-  const postable = selected.filter(
+  const filterPassed = selected.filter(
     (comment) => shouldPostComment(ctx, comment)
   );
-  const skippedByFilter = selected.length - postable.length + Math.max(0, comments.length - selected.length);
+  const existing = await existingInlineKeys(octokit, ctx);
+  const postable = filterPassed.filter((comment) => {
+    const key = `${comment.path}:${comment.line}:${normalizeForDedup(comment.body)}`;
+    return !existing.has(key);
+  });
+  const dedupedOut = filterPassed.length - postable.length;
+  const skippedByFilter = selected.length - filterPassed.length + dedupedOut + Math.max(0, comments.length - selected.length);
   if (postable.length === 0) return { posted: 0, skipped: skippedByFilter };
   if (ctx.config.batchInlineComments) {
     try {

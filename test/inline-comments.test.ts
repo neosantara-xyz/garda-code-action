@@ -15,6 +15,7 @@ describe("inline comment buffer", () => {
     const octokit = {
       rest: {
         pulls: {
+          listReviewComments: async () => ({ data: [] }),
           createReview: async (args: ReviewCall) => {
             calls.push(args);
             return { data: { id: 1, html_url: "https://example.com/review" } };
@@ -64,6 +65,71 @@ describe("inline comment buffer", () => {
     expect(calls).toHaveLength(1);
     expect(calls.at(0)?.comments).toHaveLength(1);
     expect(calls.at(0)?.comments?.at(0)?.line).toBe(3);
+  });
+
+  it("skips findings that already exist as inline comments (re-review dedup)", async () => {
+    const calls: ReviewCall[] = [];
+    const octokit = {
+      rest: {
+        pulls: {
+          // An identical finding already exists on src/a.ts:3.
+          listReviewComments: async () => ({
+            data: [
+              {
+                path: "src/a.ts",
+                line: 3,
+                body: "This null check can still throw when user.profile is missing.",
+              },
+            ],
+          }),
+          createReview: async (args: ReviewCall) => {
+            calls.push(args);
+            return { data: { id: 1, html_url: "https://example.com/review" } };
+          },
+          createReviewComment: async (args: ReviewCall) => {
+            calls.push(args);
+            return { data: { id: 1 } };
+          },
+        },
+      },
+    };
+    const ctx = {
+      isPR: true,
+      entityNumber: 7,
+      headSha: "abc123",
+      repository: { owner: "o", repo: "r", fullName: "o/r" },
+      payload: { pull_request: { head: { sha: "abc123" } } },
+      config: {
+        inlineComments: true,
+        dryRun: false,
+        maxInlineComments: 10,
+        classifyInlineComments: true,
+        batchInlineComments: true,
+        includeFixLinks: false,
+      },
+    } as unknown as NeoContext;
+    const comments: InlineComment[] = [
+      {
+        path: "src/a.ts",
+        line: 3,
+        body: "This null check can still throw when user.profile is missing.",
+      },
+      {
+        path: "src/b.ts",
+        line: 9,
+        body: "New finding not seen before.",
+      },
+    ];
+
+    const result = await postBufferedInlineComments(
+      octokit as unknown as GitHubClient,
+      ctx,
+      comments,
+    );
+    // Only the new finding is posted; the duplicate is skipped.
+    expect(result.posted).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(calls.at(0)?.comments).toHaveLength(1);
   });
 });
 
