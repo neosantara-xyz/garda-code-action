@@ -86,4 +86,17 @@ describe("composeFinalComment", () => {
     });
     expect(out).toContain("was deleted because no changes were committed");
   });
+
+  it("includes the workflow run link exactly once (no duplicate)", () => {
+    const out = composeFinalComment({
+      context: ctx,
+      actor: "alice",
+      durationMs: 1000,
+      branch: { hasChanges: false, deleted: false },
+      resultText: "done",
+      details: "<details>x</details>",
+    });
+    const occurrences = out.split("[View workflow run]").length - 1;
+    expect(occurrences).toBe(1);
+  });
 });

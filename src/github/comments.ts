@@ -3,7 +3,7 @@ import type { CommentLike, GitHubClient } from "./types.js";
 
 const MARKER = "<!-- garda-code-action-comment -->";
 const SPINNER_HTML =
-  '<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />';
+  '<img src="https://raw.githubusercontent.com/neosantara-xyz/garda-code-action/main/assets/garda-spinner.gif" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />';
 
 // Numeric GitHub App bot IDs for reliable sticky comment matching.
 const GARDA_BOT_APP_IDS = new Set([209825114]);
@@ -139,7 +139,13 @@ export async function updateTrackingComment(
   body: string,
 ): Promise<void> {
   if (!comment?.id || context.config.dryRun) return;
-  const rendered = `${MARKER}\n${body}\n\n[View workflow run](${context.runUrl})`;
+  // Only append the workflow-run link when the body does not already include
+  // it (the final completion comment carries it in its action bar). This avoids
+  // a duplicate "View workflow run" line.
+  const alreadyHasRunLink = body.includes(context.runUrl);
+  const rendered = alreadyHasRunLink
+    ? `${MARKER}\n${body}`
+    : `${MARKER}\n${body}\n\n[View workflow run](${context.runUrl})`;
   if (comment.kind === "review") {
     await octokit.rest.pulls.updateReviewComment({
       owner: context.repository.owner,

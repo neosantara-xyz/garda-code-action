@@ -39688,7 +39688,7 @@ ${data.diff}`);
 
 // src/github/comments.ts
 var MARKER = "<!-- garda-code-action-comment -->";
-var SPINNER_HTML = '<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />';
+var SPINNER_HTML = '<img src="https://raw.githubusercontent.com/neosantara-xyz/garda-code-action/main/assets/garda-spinner.gif" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />';
 var GARDA_BOT_APP_IDS = /* @__PURE__ */ new Set([209825114]);
 function isBotComment(comment, context3) {
   const login = String(comment.user?.login || "").toLowerCase();
@@ -39777,7 +39777,9 @@ async function createOrUpdateTrackingComment(octokit, context3, existing, status
 }
 async function updateTrackingComment(octokit, context3, comment, body) {
   if (!comment?.id || context3.config.dryRun) return;
-  const rendered = `${MARKER}
+  const alreadyHasRunLink = body.includes(context3.runUrl);
+  const rendered = alreadyHasRunLink ? `${MARKER}
+${body}` : `${MARKER}
 ${body}
 
 [View workflow run](${context3.runUrl})`;
