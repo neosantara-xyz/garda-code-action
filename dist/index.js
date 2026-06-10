@@ -46329,8 +46329,7 @@ function triggerSource(context3) {
     return "trigger comment/review body";
   if (context3.eventName === "pull_request")
     return "action default PR review task";
-  if (context3.eventName === "issues")
-    return "triggered issue title/body";
+  if (context3.eventName === "issues") return "triggered issue title/body";
   return "action prompt";
 }
 function buildSystemPrompt(context3) {
@@ -47647,7 +47646,10 @@ async function runNeoAgent(params) {
       }
       info(`Garda Code Responses API step ${step}`);
       const stepsRemaining = params.github.config.maxSteps - step;
-      const finishWindow = Math.max(2, Math.ceil(params.github.config.maxSteps * 0.2));
+      const finishWindow = Math.max(
+        2,
+        Math.ceil(params.github.config.maxSteps * 0.2)
+      );
       const forceFinish = stepsRemaining <= 1;
       if (stepsRemaining < finishWindow && Array.isArray(input)) {
         input.push({

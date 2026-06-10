@@ -324,7 +324,10 @@ export async function runNeoAgent(params: {
       // until max_steps is hit, producing no review. The final two steps force a
       // text-only answer (tool_choice: "none").
       const stepsRemaining = params.github.config.maxSteps - step;
-      const finishWindow = Math.max(2, Math.ceil(params.github.config.maxSteps * 0.2));
+      const finishWindow = Math.max(
+        2,
+        Math.ceil(params.github.config.maxSteps * 0.2),
+      );
       const forceFinish = stepsRemaining <= 1;
       if (stepsRemaining < finishWindow && Array.isArray(input)) {
         input.push({

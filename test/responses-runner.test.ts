@@ -347,7 +347,10 @@ describe("Responses runner hardening", () => {
         create: async (body: { model?: string }) => {
           triedModels.push(body.model as string);
           // Primary and the first fallback are unavailable; second succeeds.
-          if (body.model === "gemini-3.5-flash" || body.model === "fallback-a") {
+          if (
+            body.model === "gemini-3.5-flash" ||
+            body.model === "fallback-a"
+          ) {
             const err = new Error("unavailable") as Error & {
               status?: number;
             };

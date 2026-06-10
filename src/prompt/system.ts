@@ -11,8 +11,7 @@ function triggerSource(context: NeoContext): string {
     return "trigger comment/review body";
   if (context.eventName === "pull_request")
     return "action default PR review task";
-  if (context.eventName === "issues")
-    return "triggered issue title/body";
+  if (context.eventName === "issues") return "triggered issue title/body";
   return "action prompt";
 }
 
@@ -149,12 +148,10 @@ export function buildTaskPrompt(
       "Summarize the changes in this PR/milestone as user-facing release notes. Group by feature/fix/breaking change.",
     ask: "Answer the user's specific question using repository context and available tools.",
     fix: "Implement the requested change. Read relevant files first, make minimal targeted edits, commit with a descriptive message.",
-    auto:
-      "Perform the requested GitHub automation task. For PRs, review changed code and CI context.",
+    auto: "Perform the requested GitHub automation task. For PRs, review changed code and CI context.",
   };
 
-  const instruction =
-    modeInstructions[mode] || modeInstructions.auto;
+  const instruction = modeInstructions[mode] || modeInstructions.auto;
 
   return `<task_instruction_source>${triggerSource(context)}</task_instruction_source>
 
