@@ -82,9 +82,11 @@ describe("resolveGitHubToken", () => {
     it("attempts the exchange when OIDC is available and returns the bot token", async () => {
       process.env.ACTIONS_ID_TOKEN_REQUEST_URL = "https://oidc.example";
       vi.mocked(core.getIDToken).mockResolvedValue("oidc-jwt");
-      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        new Response(JSON.stringify({ token: "ghs_bot" }), { status: 200 }),
-      );
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          new Response(JSON.stringify({ token: "ghs_bot" }), { status: 200 }),
+        );
       const config = makeConfig({ githubToken: "ghs_fallback" });
 
       const token = await resolveGitHubToken(config);
