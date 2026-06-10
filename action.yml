@@ -198,6 +198,10 @@ inputs:
     description: "Maximum wall-clock seconds for the Responses API tool loop before returning a guarded stop result."
     required: false
     default: "900"
+  max_output_tokens:
+    description: "Maximum tokens the model may generate per Responses API turn. Caps cost and prevents runaway output."
+    required: false
+    default: "8000"
 
   include_image_context:
     description: "Download GitHub user-attachment images from the trigger/context and pass them to Neosantara Responses API when supported."

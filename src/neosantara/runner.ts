@@ -351,6 +351,7 @@ export async function runNeoAgent(params: {
           previous_response_id: previousResponseId,
           tools: [...tools, ...nativeMcpTools],
           tool_choice: forceFinish ? "none" : "auto",
+          max_output_tokens: params.github.config.maxOutputTokens,
           store: true,
           ...(params.github.config.fallbackModels.length > 0
             ? { __fallbackModels: params.github.config.fallbackModels }

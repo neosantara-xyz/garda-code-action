@@ -45,6 +45,7 @@ const base = {
     maxRepeatedToolCalls: 3,
     retryMaxAttempts: 3,
     maxRuntimeSeconds: 900,
+    maxOutputTokens: 8000,
     restoreTrustedConfig: true,
     ignore: "",
     dryRun: false,

@@ -125,9 +125,11 @@ export async function createOrUpdateTrackingComment(
     });
     return { id: data.id, html_url: data.html_url, kind };
   }
-  const sticky = context.config.useStickyComment
-    ? await findStickyComment(octokit, context)
-    : null;
+  const sticky =
+    context.config.useStickyComment &&
+    context.eventName !== "pull_request_review_comment"
+      ? await findStickyComment(octokit, context)
+      : null;
   if (sticky?.id) {
     const { data } = await octokit.rest.issues.updateComment({
       owner,

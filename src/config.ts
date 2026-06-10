@@ -143,6 +143,7 @@ export type ActionConfig = {
   maxRepeatedToolCalls: number;
   retryMaxAttempts: number;
   maxRuntimeSeconds: number;
+  maxOutputTokens: number;
   includeImageContext: boolean;
   maxCommentImages: number;
   maxImageBytes: number;
@@ -246,6 +247,7 @@ export function readConfig(): ActionConfig {
     maxRepeatedToolCalls: int("max_repeated_tool_calls", 3),
     retryMaxAttempts: int("retry_max_attempts", 3),
     maxRuntimeSeconds: int("max_runtime_seconds", 900),
+    maxOutputTokens: int("max_output_tokens", 8000),
     includeImageContext: bool("include_image_context", true),
     maxCommentImages: int("max_comment_images", 5),
     maxImageBytes: int("max_image_bytes", 1572864),
@@ -272,10 +274,7 @@ export function validateConfig(config: ActionConfig): void {
       "NEOSANTARA_API_KEY environment variable is required (set it as a repository secret).",
     );
   }
-  if (
-    !config.githubToken &&
-    config.useGitHubAppTokenExchange === "off"
-  ) {
+  if (!config.githubToken && config.useGitHubAppTokenExchange === "off") {
     problems.push(
       "github_token is required (provide via input, GITHUB_TOKEN, or allow the hosted token exchange).",
     );
@@ -288,6 +287,9 @@ export function validateConfig(config: ActionConfig): void {
   }
   if (config.maxRuntimeSeconds <= 0) {
     problems.push("max_runtime_seconds must be greater than 0.");
+  }
+  if (config.maxOutputTokens <= 0) {
+    problems.push("max_output_tokens must be greater than 0.");
   }
 
   if (problems.length > 0) {
