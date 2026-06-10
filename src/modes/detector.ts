@@ -40,12 +40,18 @@ export function shouldSwitchToFixMode(context: NeoContext): boolean {
     /\bperbaiki\b/i.test(request) ||
     /\bpatch\b/i.test(request) ||
     /\bimplement\b/i.test(request) ||
-    /\bperbaikan\b/i.test(request)
+    /\bperbaikan\b/i.test(request) ||
+    /\bapply\b/i.test(request) ||
+    /\bterapkan\b/i.test(request) ||
+    /\bubah\b/i.test(request) ||
+    /\bchange\b/i.test(request) ||
+    /\bupdate\b/i.test(request)
   );
 }
 
 export function detectExecutionMode(context: NeoContext): ExecutionMode {
   if (context.config.prompt.trim()) return "agent";
+
   if (context.config.mode !== "auto" && context.config.mode !== "review")
     return containsTrigger(context) || !context.isEntity ? "tag" : "skip";
 

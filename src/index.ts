@@ -168,50 +168,42 @@ async function main(): Promise<void> {
         return;
       }
       await validateActorAndPermissions(octokit, context);
-      const preFetchStatus = context.isPR
-        ? "- [x] Trigger validated\n- [ ] Restoring trusted config\n- [ ] Fetching GitHub context"
-        : "- [x] Trigger validated\n- [ ] Fetching GitHub context";
+      const introText =
+        context.config.reviewLanguage.toLowerCase().startsWith("id")
+          ? "Saya akan menganalisis ini dan segera memberikan ulasan."
+          : "I'll analyze this and get back to you.";
       trackingComment = await createOrUpdateTrackingComment(
         octokit,
         context,
         trackingComment,
-        preFetchStatus,
+        introText,
       );
     }
 
     if (context.isPR) {
       await preparePullRequestWorkspace(context);
       await restoreTrustedConfigFromBase(context);
-      trackingComment = await createOrUpdateTrackingComment(
-        octokit,
-        context,
-        trackingComment,
-        "- [x] Trigger validated\n- [x] Trusted config restored\n- [ ] Fetching GitHub context",
-      );
     }
 
     const data = await fetchGitHubData(octokit, context);
 
+    let issueWorkspace: { prepared: boolean; branch?: string } = {
+      prepared: false,
+    };
     if (
       !context.isPR &&
       context.isEntity &&
       context.config.mode === "fix" &&
       context.config.allowFix
     ) {
-      const issueWorkspace = await prepareIssueWorkspace(context, data);
-      if (issueWorkspace.prepared) {
-        trackingComment = await createOrUpdateTrackingComment(
-          octokit,
-          context,
-          trackingComment,
-          `- [x] Trigger validated\n- [x] GitHub context fetched\n- [x] Created work branch \`${issueWorkspace.branch}\`\n- [ ] Running Garda Code agent`,
-        );
-      }
+      issueWorkspace = await prepareIssueWorkspace(context, data);
     }
 
     const agentStatus = context.isPR
       ? "- [x] Trigger validated\n- [x] Trusted config restored\n- [x] GitHub context fetched\n- [ ] Running Garda Code agent"
-      : "- [x] Trigger validated\n- [x] GitHub context fetched\n- [ ] Running Garda Code agent";
+      : issueWorkspace.prepared
+        ? `- [x] Trigger validated\n- [x] GitHub context fetched\n- [x] Created work branch \`${issueWorkspace.branch}\`\n- [ ] Running Garda Code agent`
+        : "- [x] Trigger validated\n- [x] GitHub context fetched\n- [ ] Running Garda Code agent";
     trackingComment = await createOrUpdateTrackingComment(
       octokit,
       context,
@@ -293,7 +285,7 @@ async function main(): Promise<void> {
       actor: context.actor,
       durationMs: Date.now() - startedAt,
       branch: branchFinalization,
-      resultText: result.text,
+      resultText: result.lastTrackingBody || result.text,
       findingsSummary: buildFindingsSummary(inlineClassification.comments),
       details,
     });

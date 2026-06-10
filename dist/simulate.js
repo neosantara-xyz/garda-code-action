@@ -23450,6 +23450,7 @@ function containsTrigger(context4) {
   }
   if (!regex) return false;
   if (context4.eventName === "issues") {
+    if (action !== "opened") return false;
     return regex.test(payload2.issue?.title || "") || regex.test(payload2.issue?.body || "");
   }
   if (context4.eventName === "pull_request" || context4.eventName === "pull_request_target") {
@@ -23473,9 +23474,8 @@ function extractUserRequest(context4) {
   const phrase = triggerPhrase2.trim();
   let cleaned = String(raw);
   if (phrase) {
-    const idx = cleaned.toLowerCase().indexOf(phrase.toLowerCase());
-    if (idx !== -1)
-      cleaned = cleaned.slice(0, idx) + cleaned.slice(idx + phrase.length);
+    const phraseRegex = new RegExp(escapeRegExp(phrase), "gi");
+    cleaned = cleaned.replace(phraseRegex, "");
   }
   return sanitizeContent(cleaned.trim()) || "Review this context and help with the requested GitHub task.";
 }

@@ -26,6 +26,7 @@ export type TranscriptEvent = {
 
 export type RunnerResult = {
   text: string;
+  lastTrackingBody?: string;
   responseId?: string;
   usage?: unknown;
   steps: number;
@@ -287,6 +288,7 @@ export async function runNeoAgent(params: {
   const transcript: TranscriptEvent[] = [];
   const startedAt = Date.now();
   const deadlineMs = Math.max(1, params.github.config.maxRuntimeSeconds) * 1000;
+  let lastTrackingBody = "";
 
   const toolCtx: ToolExecutionContext = {
     octokit: params.octokit,
@@ -311,6 +313,7 @@ export async function runNeoAgent(params: {
         });
         return {
           text: "Garda Code stopped because max_runtime_seconds was reached.",
+          lastTrackingBody,
           responseId,
           usage: lastUsage,
           steps: step - 1,
@@ -391,6 +394,7 @@ export async function runNeoAgent(params: {
           "Garda Code finished without a textual response.";
         return {
           text: redact(finalText),
+          lastTrackingBody,
           responseId,
           usage: lastUsage,
           steps: step,
@@ -446,6 +450,21 @@ export async function runNeoAgent(params: {
           call.arguments,
           toolCtx,
         );
+        // Capture what the model explicitly wrote to the tracking comment.
+        if (call.name === "github_update_tracking_comment") {
+          try {
+            const args =
+              typeof call.arguments === "string"
+                ? JSON.parse(call.arguments)
+                : call.arguments;
+            const parts = [args.status || "", args.body || ""]
+              .filter(Boolean)
+              .join("\n\n");
+            if (parts.trim()) lastTrackingBody = parts.trim();
+          } catch {
+            // ignore parse errors
+          }
+        }
         transcript.push({
           step,
           type: "tool_result",
@@ -482,6 +501,7 @@ export async function runNeoAgent(params: {
 
     return {
       text: "Garda Code stopped because max_steps was reached.",
+      lastTrackingBody,
       responseId,
       usage: lastUsage,
       steps: params.github.config.maxSteps,

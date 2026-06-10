@@ -30087,6 +30087,7 @@ function containsTrigger(context3) {
   }
   if (!regex) return false;
   if (context3.eventName === "issues") {
+    if (action !== "opened") return false;
     return regex.test(payload.issue?.title || "") || regex.test(payload.issue?.body || "");
   }
   if (context3.eventName === "pull_request" || context3.eventName === "pull_request_target") {
@@ -30110,9 +30111,8 @@ function extractUserRequest(context3) {
   const phrase = triggerPhrase.trim();
   let cleaned = String(raw);
   if (phrase) {
-    const idx = cleaned.toLowerCase().indexOf(phrase.toLowerCase());
-    if (idx !== -1)
-      cleaned = cleaned.slice(0, idx) + cleaned.slice(idx + phrase.length);
+    const phraseRegex = new RegExp(escapeRegExp(phrase), "gi");
+    cleaned = cleaned.replace(phraseRegex, "");
   }
   return sanitizeContent(cleaned.trim()) || "Review this context and help with the requested GitHub task.";
 }
@@ -30131,7 +30131,7 @@ function shouldSwitchToFixMode(context3) {
     request2
   );
   if (negated) return false;
-  return /\bfix\b/i.test(request2) || /\bperbaiki\b/i.test(request2) || /\bpatch\b/i.test(request2) || /\bimplement\b/i.test(request2) || /\bperbaikan\b/i.test(request2);
+  return /\bfix\b/i.test(request2) || /\bperbaiki\b/i.test(request2) || /\bpatch\b/i.test(request2) || /\bimplement\b/i.test(request2) || /\bperbaikan\b/i.test(request2) || /\bapply\b/i.test(request2) || /\bterapkan\b/i.test(request2) || /\bubah\b/i.test(request2) || /\bchange\b/i.test(request2) || /\bupdate\b/i.test(request2);
 }
 function detectExecutionMode(context3) {
   if (context3.config.prompt.trim()) return "agent";
@@ -39732,6 +39732,15 @@ ${cleanBody ? `${cleanBody}
 
 ` : ""}[View workflow run](${context3.runUrl})`;
 }
+var TITLE_PATTERNS = [
+  /Garda Code (sedang bekerja|is working)/i,
+  /\*\*Garda (finished|encountered an error)/i
+];
+function looksLikeGardaComment(body) {
+  if (!body) return false;
+  if (body.includes(MARKER)) return true;
+  return TITLE_PATTERNS.some((p) => p.test(body));
+}
 async function findStickyComment(octokit, context3) {
   if (!context3.isEntity || !context3.entityNumber) return null;
   const { owner, repo } = context3.repository;
@@ -39742,7 +39751,7 @@ async function findStickyComment(octokit, context3) {
     per_page: 100
   });
   const found = [...data].reverse().find(
-    (comment) => comment.body?.includes(MARKER) && isBotComment(comment, context3)
+    (comment) => looksLikeGardaComment(comment.body) && isBotComment(comment, context3)
   );
   return found ? { id: found.id, html_url: found.html_url, kind: "issue" } : null;
 }
@@ -47688,6 +47697,7 @@ async function runNeoAgent(params) {
   const transcript = [];
   const startedAt = Date.now();
   const deadlineMs = Math.max(1, params.github.config.maxRuntimeSeconds) * 1e3;
+  let lastTrackingBody = "";
   const toolCtx = {
     octokit: params.octokit,
     github: params.github,
@@ -47710,6 +47720,7 @@ async function runNeoAgent(params) {
         });
         return {
           text: "Garda Code stopped because max_runtime_seconds was reached.",
+          lastTrackingBody,
           responseId,
           usage: lastUsage,
           steps: step - 1,
@@ -47775,6 +47786,7 @@ async function runNeoAgent(params) {
         finalText = extractText(response) || "Garda Code finished without a textual response.";
         return {
           text: redact(finalText),
+          lastTrackingBody,
           responseId,
           usage: lastUsage,
           steps: step,
@@ -47826,6 +47838,14 @@ async function runNeoAgent(params) {
           call.arguments,
           toolCtx
         );
+        if (call.name === "github_update_tracking_comment") {
+          try {
+            const args = typeof call.arguments === "string" ? JSON.parse(call.arguments) : call.arguments;
+            const parts = [args.status || "", args.body || ""].filter(Boolean).join("\n\n");
+            if (parts.trim()) lastTrackingBody = parts.trim();
+          } catch {
+          }
+        }
         transcript.push({
           step,
           type: "tool_result",
@@ -47860,6 +47880,7 @@ async function runNeoAgent(params) {
     }
     return {
       text: "Garda Code stopped because max_steps was reached.",
+      lastTrackingBody,
       responseId,
       usage: lastUsage,
       steps: params.github.config.maxSteps,
@@ -48438,40 +48459,29 @@ async function main() {
         return;
       }
       await validateActorAndPermissions(octokit, context3);
-      const preFetchStatus = context3.isPR ? "- [x] Trigger validated\n- [ ] Restoring trusted config\n- [ ] Fetching GitHub context" : "- [x] Trigger validated\n- [ ] Fetching GitHub context";
+      const introText = context3.config.reviewLanguage.toLowerCase().startsWith("id") ? "Saya akan menganalisis ini dan segera memberikan ulasan." : "I'll analyze this and get back to you.";
       trackingComment = await createOrUpdateTrackingComment(
         octokit,
         context3,
         trackingComment,
-        preFetchStatus
+        introText
       );
     }
     if (context3.isPR) {
       await preparePullRequestWorkspace(context3);
       await restoreTrustedConfigFromBase(context3);
-      trackingComment = await createOrUpdateTrackingComment(
-        octokit,
-        context3,
-        trackingComment,
-        "- [x] Trigger validated\n- [x] Trusted config restored\n- [ ] Fetching GitHub context"
-      );
     }
     const data = await fetchGitHubData(octokit, context3);
+    let issueWorkspace = {
+      prepared: false
+    };
     if (!context3.isPR && context3.isEntity && context3.config.mode === "fix" && context3.config.allowFix) {
-      const issueWorkspace = await prepareIssueWorkspace(context3, data);
-      if (issueWorkspace.prepared) {
-        trackingComment = await createOrUpdateTrackingComment(
-          octokit,
-          context3,
-          trackingComment,
-          `- [x] Trigger validated
+      issueWorkspace = await prepareIssueWorkspace(context3, data);
+    }
+    const agentStatus = context3.isPR ? "- [x] Trigger validated\n- [x] Trusted config restored\n- [x] GitHub context fetched\n- [ ] Running Garda Code agent" : issueWorkspace.prepared ? `- [x] Trigger validated
 - [x] GitHub context fetched
 - [x] Created work branch \`${issueWorkspace.branch}\`
-- [ ] Running Garda Code agent`
-        );
-      }
-    }
-    const agentStatus = context3.isPR ? "- [x] Trigger validated\n- [x] Trusted config restored\n- [x] GitHub context fetched\n- [ ] Running Garda Code agent" : "- [x] Trigger validated\n- [x] GitHub context fetched\n- [ ] Running Garda Code agent";
+- [ ] Running Garda Code agent` : "- [x] Trigger validated\n- [x] GitHub context fetched\n- [ ] Running Garda Code agent";
     trackingComment = await createOrUpdateTrackingComment(
       octokit,
       context3,
@@ -48546,7 +48556,7 @@ async function main() {
       actor: context3.actor,
       durationMs: Date.now() - startedAt,
       branch: branchFinalization,
-      resultText: result.text,
+      resultText: result.lastTrackingBody || result.text,
       findingsSummary: buildFindingsSummary(inlineClassification.comments),
       details
     });

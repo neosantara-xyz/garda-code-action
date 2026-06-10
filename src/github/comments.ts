@@ -67,6 +67,17 @@ export function renderProgress(
   return `${MARKER}\n### ${title}… ${SPINNER_HTML}\n\n${cleanStatus}\n\n${cleanBody ? `${cleanBody}\n\n` : ""}[View workflow run](${context.runUrl})`;
 }
 
+const TITLE_PATTERNS = [
+  /Garda Code (sedang bekerja|is working)/i,
+  /\*\*Garda (finished|encountered an error)/i,
+];
+
+function looksLikeGardaComment(body: string | null | undefined): boolean {
+  if (!body) return false;
+  if (body.includes(MARKER)) return true;
+  return TITLE_PATTERNS.some((p) => p.test(body));
+}
+
 export async function findStickyComment(
   octokit: GitHubClient,
   context: NeoContext,
@@ -83,7 +94,7 @@ export async function findStickyComment(
     .reverse()
     .find(
       (comment: CommentLike) =>
-        comment.body?.includes(MARKER) && isBotComment(comment, context),
+        looksLikeGardaComment(comment.body) && isBotComment(comment, context),
     );
   return found
     ? { id: found.id, html_url: found.html_url, kind: "issue" }

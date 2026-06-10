@@ -28,6 +28,9 @@ export function containsTrigger(context: NeoContext): boolean {
 
   if (!regex) return false;
   if (context.eventName === "issues") {
+    // Only check title/body for opened events (same as claude-code-action).
+    // assigned and labeled are handled above via assigneeTrigger/labelTrigger.
+    if (action !== "opened") return false;
     return (
       regex.test(payload.issue?.title || "") ||
       regex.test(payload.issue?.body || "")
@@ -66,13 +69,13 @@ export function extractUserRequest(context: NeoContext): string {
     context.payload.pull_request?.body ??
     context.payload.issue?.body ??
     "";
-  // Use string indexOf instead of regex to avoid ReDoS with large bodies
   const phrase = triggerPhrase.trim();
   let cleaned = String(raw);
   if (phrase) {
-    const idx = cleaned.toLowerCase().indexOf(phrase.toLowerCase());
-    if (idx !== -1)
-      cleaned = cleaned.slice(0, idx) + cleaned.slice(idx + phrase.length);
+    // Strip ALL occurrences of the trigger phrase (case-insensitive) so
+    // "@garda @garda fix this" doesn't leave a stray "@garda" in the request.
+    const phraseRegex = new RegExp(escapeRegExp(phrase), "gi");
+    cleaned = cleaned.replace(phraseRegex, "");
   }
   return (
     sanitizeContent(cleaned.trim()) ||
