@@ -63,8 +63,9 @@ jobs:
         with:
           trigger_phrase: "@garda"
           mode: "auto"
-          model: "grok-code-fast"
           review_language: "id"
+          # Optional: override the model (defaults to grok-code-fast)
+          # model: "grok-code-fast"
         env:
           NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}
 ```

@@ -22,7 +22,6 @@ jobs:
         with:
           trigger_phrase: "@garda"
           mode: "security"
-          model: "grok-code-fast"
           review_language: "id"
         env:
           NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}

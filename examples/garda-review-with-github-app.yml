@@ -39,7 +39,6 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
           trigger_phrase: "@garda"
           mode: "auto"
-          model: "grok-code-fast"
           review_language: "id"
           inline_comments: "true"
           inline_classifier_mode: "model"

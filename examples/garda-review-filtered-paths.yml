@@ -30,7 +30,6 @@ jobs:
         with:
           trigger_phrase: "@garda"
           mode: "security"
-          model: "grok-code-fast"
           review_language: "en"
           # Skip generated and vendored files even within critical paths
           ignore: |

@@ -26,7 +26,6 @@ jobs:
         with:
           trigger_phrase: "@garda"
           mode: "review"
-          model: "grok-code-fast"
           review_language: "en"
           # Only surface medium+ severity inline comments to reduce noise
           min_inline_severity: "medium"

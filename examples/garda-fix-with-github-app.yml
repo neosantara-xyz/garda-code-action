@@ -48,7 +48,6 @@ jobs:
           enable_mcp_compat: "true"
           bot_id: ${{ steps.bot-user.outputs.id }}
           bot_name: ${{ steps.app-token.outputs.app-slug }}[bot]
-          model: "grok-code-fast"
           review_language: "id"
         env:
           NEOSANTARA_API_KEY: ${{ secrets.NEOSANTARA_API_KEY }}
