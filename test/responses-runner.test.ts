@@ -11,8 +11,9 @@ import type { GitHubClient } from "../src/github/types.js";
 
 type ResponseRequest = {
   previous_response_id?: string;
-  input?: Array<{ output?: string }>;
+  input?: Array<{ output?: string; content?: Array<{ text?: string }> }>;
   tools?: Array<{ name?: string }>;
+  tool_choice?: string;
 };
 
 function hasToolName(tool: unknown, name: string): boolean {
@@ -224,6 +225,71 @@ describe("Responses runner hardening", () => {
     expect(requests.at(2)?.input?.at(0)?.output).toContain(
       "Tool repetition guard",
     );
+  });
+
+  it("forces a final text report when the step budget is nearly exhausted", async () => {
+    const requests: ResponseRequest[] = [];
+    // A model that keeps calling a (varied) tool every turn and never stops on
+    // its own. The runner must force a finish near the step limit.
+    let counter = 0;
+    const client = {
+      responses: {
+        create: async (body: unknown) => {
+          const req = body as ResponseRequest;
+          requests.push(req);
+          // When the runner forces finishing, honor it by returning text.
+          if (req.tool_choice === "none") {
+            return {
+              id: `rf${counter}`,
+              output_text: "final report under pressure",
+              output: [],
+              usage: { input_tokens: 1 },
+            };
+          }
+          counter += 1;
+          return {
+            id: `r${counter}`,
+            output: [
+              {
+                type: "function_call",
+                call_id: `c${counter}`,
+                name: "repo_read_file",
+                arguments: JSON.stringify({ path: `file-${counter}.ts` }),
+              },
+            ],
+            usage: { input_tokens: 1 },
+          };
+        },
+      },
+    } as unknown as OpenAI;
+
+    const ctx = context(); // maxSteps = 3
+    const result = await runNeoAgent({
+      client,
+      github: ctx,
+      data,
+      systemPrompt: "system",
+      taskPrompt: "task",
+      octokit: {} as unknown as GitHubClient,
+      trackingComment: null,
+      setTrackingComment() {},
+      inlineBuffer: [],
+    });
+
+    // The run ends with a real report, not the generic max_steps message.
+    expect(result.text).toBe("final report under pressure");
+    // The last request forced text-only output.
+    expect(requests.at(-1)?.tool_choice).toBe("none");
+    // A wrap-up / step-limit nudge was injected into the input.
+    const injectedTexts = requests
+      .flatMap((r) => r.input || [])
+      .flatMap((i) => i.content || [])
+      .map((c) => c.text || "");
+    expect(
+      injectedTexts.some(
+        (t) => t.includes("STEP LIMIT") || t.includes("steps left"),
+      ),
+    ).toBe(true);
   });
 
   it("retries with fallback model when primary returns 503", async () => {

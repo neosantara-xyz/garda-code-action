@@ -318,6 +318,28 @@ export async function runNeoAgent(params: {
         };
       }
       core.info(`Garda Code Responses API step ${step}`);
+
+      // Near the end of the step budget, nudge the model to stop inspecting and
+      // return its final report. Weaker models otherwise keep calling read tools
+      // until max_steps is hit, producing no review. The final two steps force a
+      // text-only answer (tool_choice: "none").
+      const stepsRemaining = params.github.config.maxSteps - step;
+      const finishWindow = Math.max(2, Math.ceil(params.github.config.maxSteps * 0.2));
+      const forceFinish = stepsRemaining <= 1;
+      if (stepsRemaining < finishWindow && Array.isArray(input)) {
+        input.push({
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: forceFinish
+                ? "STEP LIMIT REACHED. Do not call any more tools. Reply now with your final review report as plain text, summarizing the findings you have already buffered."
+                : `You have about ${stepsRemaining} tool-loop steps left. Wrap up: buffer any remaining concrete findings now, then stop calling tools and return your final review report as plain text.`,
+            },
+          ],
+        });
+      }
+
       const response = await createResponseWithRetry(
         params.client,
         {
@@ -325,7 +347,7 @@ export async function runNeoAgent(params: {
           input,
           previous_response_id: previousResponseId,
           tools: [...tools, ...nativeMcpTools],
-          tool_choice: "auto",
+          tool_choice: forceFinish ? "none" : "auto",
           store: true,
           ...(params.github.config.fallbackModels.length > 0
             ? { __fallbackModels: params.github.config.fallbackModels }

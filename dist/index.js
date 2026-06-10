@@ -46406,22 +46406,31 @@ If there are no meaningful findings, say so clearly \u2014 do not pad.
 
 <workflow_steps>
 For PR reviews and issue analysis:
-1. Create a mental todo list of what to inspect based on the request.
-2. Call github_get_ci_status to check if CI is passing.
-3. Read changed files using repo_read_file or repo_get_diff.
-4. Grep for relevant patterns, dependencies, or related code when needed.
-5. Buffer concrete inline findings with github_buffer_inline_comment.
-6. Update github_update_tracking_comment with progress as you work.
-7. Finish with a structured report (see format below).
+1. Start by calling repo_get_changed_files and repo_get_diff to see exactly what changed. The diff is your primary subject \u2014 review THE CHANGES, not the whole repository.
+2. Optionally call github_get_ci_status once to check CI state.
+3. Read only the changed files (or specific files directly relevant to a change) with repo_read_file. Use repo_grep sparingly to confirm a specific concern (e.g. how a changed function is called).
+4. As you find concrete, line-specific issues, buffer them immediately with github_buffer_inline_comment.
+5. Optionally update github_update_tracking_comment once or twice with progress.
+6. STOP and write your final report. See "How to finish" below.
 
 For fix/implementation tasks:
 1. Understand the exact change required from the user request.
-2. Read relevant files before editing.
+2. Read the relevant files before editing.
 3. Make only the changes needed \u2014 do not refactor unrelated code.
-4. Verify the change is self-consistent.
-5. Commit with a descriptive message.
-6. Update the tracking comment with a summary.
+4. Commit with a descriptive message.
+5. Write your final report (How to finish below).
 </workflow_steps>
+
+<how_to_finish>
+This is the most important rule. You finish a task by returning your final report as a plain text response WITHOUT any tool call. The moment you reply with text and no tool call, the session ends and your report becomes the result.
+
+- When you have seen enough of the diff to form an opinion, STOP inspecting and write the report. A focused review of a small diff needs only a few tool calls, not dozens.
+- Do NOT keep exploring "just in case". Reviewing the changed lines plus their immediate context is enough.
+- Do NOT call the same tool with the same arguments twice \u2014 repeated calls are blocked and waste your step budget.
+- You have a hard limit of ${context3.config.maxSteps} tool-loop steps. Aim to finish well under it (typically under 15). If you approach the limit, immediately stop and report what you found so far.
+- Buffer inline findings with github_buffer_inline_comment BEFORE writing the final report \u2014 the report summarizes findings you have already buffered.
+- If there are no meaningful issues, that is a valid and complete result: stop and report "No significant issues found" with a one-line rationale.
+</how_to_finish>
 
 ${customBlock}
 <final_response_format>
@@ -47637,6 +47646,20 @@ async function runNeoAgent(params) {
         };
       }
       info(`Garda Code Responses API step ${step}`);
+      const stepsRemaining = params.github.config.maxSteps - step;
+      const finishWindow = Math.max(2, Math.ceil(params.github.config.maxSteps * 0.2));
+      const forceFinish = stepsRemaining <= 1;
+      if (stepsRemaining < finishWindow && Array.isArray(input)) {
+        input.push({
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: forceFinish ? "STEP LIMIT REACHED. Do not call any more tools. Reply now with your final review report as plain text, summarizing the findings you have already buffered." : `You have about ${stepsRemaining} tool-loop steps left. Wrap up: buffer any remaining concrete findings now, then stop calling tools and return your final review report as plain text.`
+            }
+          ]
+        });
+      }
       const response = await createResponseWithRetry(
         params.client,
         {
@@ -47644,7 +47667,7 @@ async function runNeoAgent(params) {
           input,
           previous_response_id: previousResponseId,
           tools: [...tools, ...nativeMcpTools],
-          tool_choice: "auto",
+          tool_choice: forceFinish ? "none" : "auto",
           store: true,
           ...params.github.config.fallbackModels.length > 0 ? { __fallbackModels: params.github.config.fallbackModels } : {},
           metadata: {
