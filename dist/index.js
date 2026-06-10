@@ -30114,6 +30114,21 @@ function extractUserRequest(context3) {
 }
 
 // src/modes/detector.ts
+function shouldSwitchToFixMode(context3) {
+  if (context3.config.mode !== "auto" || !context3.config.allowFix) return false;
+  const triggeredByComment = [
+    "issue_comment",
+    "pull_request_review",
+    "pull_request_review_comment"
+  ].includes(context3.eventName);
+  if (!triggeredByComment || !containsTrigger(context3)) return false;
+  const request2 = extractUserRequest(context3);
+  const negated = /\b(don'?t|do not|jangan|tidak usah|no need to|just explain|only explain|hanya jelaskan)\b[^.!?]*\b(fix|perbaiki|patch|change|ubah)\b/i.test(
+    request2
+  );
+  if (negated) return false;
+  return /\bfix\b/i.test(request2) || /\bperbaiki\b/i.test(request2) || /\bpatch\b/i.test(request2) || /\bimplement\b/i.test(request2) || /\bperbaikan\b/i.test(request2);
+}
 function detectExecutionMode(context3) {
   if (context3.config.prompt.trim()) return "agent";
   if (context3.config.mode !== "auto" && context3.config.mode !== "review")
@@ -48302,19 +48317,11 @@ async function main() {
         return;
       }
     }
-    if (context3.config.mode === "auto" && context3.config.allowFix) {
-      const request3 = extractUserRequest(context3);
-      const lower = request3.toLowerCase();
-      const negated = /\b(don'?t|do not|jangan|tidak usah|no need to|just explain|only explain|hanya jelaskan)\b[^.!?]*\b(fix|perbaiki|patch|change|ubah)\b/i.test(
-        request3
+    if (shouldSwitchToFixMode(context3)) {
+      info(
+        `Detected fix/patch request in trigger comment: "${extractUserRequest(context3)}". Dynamically switching mode to 'fix'.`
       );
-      const isFixRequest = !negated && (/\bfix\b/i.test(lower) || /\bperbaiki\b/i.test(lower) || /\bpatch\b/i.test(lower) || /\bimplement\b/i.test(lower) || /\bperbaikan\b/i.test(lower));
-      if (isFixRequest) {
-        info(
-          `Detected fix/patch request in auto mode: "${request3}". Dynamically switching mode to 'fix'.`
-        );
-        context3.config.mode = "fix";
-      }
+      context3.config.mode = "fix";
     }
     assertFixAllowed(context3);
     const executionMode = detectExecutionMode(context3);

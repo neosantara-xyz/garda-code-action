@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { readConfig, validateConfig, type ActionConfig } from "./config.js";
 import { resolveGitHubToken } from "./github/token.js";
 import { parseContext, type NeoContext } from "./github/context.js";
-import { detectExecutionMode } from "./modes/detector.js";
+import {
+  detectExecutionMode,
+  shouldSwitchToFixMode,
+} from "./modes/detector.js";
 import { containsTrigger, extractUserRequest } from "./github/trigger.js";
 import {
   validateActorAndPermissions,
@@ -116,28 +119,11 @@ async function main(): Promise<void> {
       }
     }
 
-    if (context.config.mode === "auto" && context.config.allowFix) {
-      const request = extractUserRequest(context);
-      const lower = request.toLowerCase();
-      // Negation guards — avoid switching to fix mode when the user explicitly
-      // does NOT want changes ("don't fix", "jangan perbaiki", "just explain").
-      const negated =
-        /\b(don'?t|do not|jangan|tidak usah|no need to|just explain|only explain|hanya jelaskan)\b[^.!?]*\b(fix|perbaiki|patch|change|ubah)\b/i.test(
-          request,
-        );
-      const isFixRequest =
-        !negated &&
-        (/\bfix\b/i.test(lower) ||
-          /\bperbaiki\b/i.test(lower) ||
-          /\bpatch\b/i.test(lower) ||
-          /\bimplement\b/i.test(lower) ||
-          /\bperbaikan\b/i.test(lower));
-      if (isFixRequest) {
-        core.info(
-          `Detected fix/patch request in auto mode: "${request}". Dynamically switching mode to 'fix'.`,
-        );
-        context.config.mode = "fix";
-      }
+    if (shouldSwitchToFixMode(context)) {
+      core.info(
+        `Detected fix/patch request in trigger comment: "${extractUserRequest(context)}". Dynamically switching mode to 'fix'.`,
+      );
+      context.config.mode = "fix";
     }
 
     assertFixAllowed(context);
