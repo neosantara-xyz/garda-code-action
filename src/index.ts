@@ -107,11 +107,28 @@ async function main(): Promise<void> {
       const prState = context.payload.pull_request?.state;
       const isMerged = context.payload.pull_request?.merged;
       if (prState === "closed" || isMerged) {
-        core.setOutput("conclusion", "skipped");
-        core.notice(
-          `Pull request is closed or merged (state: ${prState}, merged: ${isMerged}). Skipping Garda review/action.`,
-        );
-        return;
+        // A closed/merged PR is in its final state: its head branch may be
+        // deleted and cannot meaningfully receive new commits. We still honor
+        // an explicit @garda mention (the user is asking for something), but
+        // only in READ-ONLY mode — no fix/commit. Automatic review events are
+        // skipped since reviewing an already-merged PR adds no value.
+        const explicitlyTriggered =
+          Boolean(config.prompt.trim()) || containsTrigger(context);
+        if (!explicitlyTriggered) {
+          core.setOutput("conclusion", "skipped");
+          core.notice(
+            `Pull request is closed or merged (state: ${prState}, merged: ${isMerged}) and was not explicitly triggered. Skipping.`,
+          );
+          return;
+        }
+        if (config.allowFix || context.config.mode === "fix") {
+          core.notice(
+            `Pull request is closed or merged; running in read-only mode (fix/commit disabled).`,
+          );
+          context.config.allowFix = false;
+          if (context.config.mode === "fix") context.config.mode = "review";
+        }
+        context.isClosedOrMergedPR = true;
       }
     } else if (context.isEntity) {
       const issueState = context.payload.issue?.state;

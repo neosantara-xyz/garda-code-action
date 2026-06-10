@@ -69,4 +69,10 @@ describe("repository mutation policy", () => {
       ),
     ).toBe(false);
   });
+
+  it("blocks mutations on a closed or merged PR", () => {
+    expect(
+      isRepositoryMutationAllowed(context({ isClosedOrMergedPR: true })),
+    ).toBe(false);
+  });
 });

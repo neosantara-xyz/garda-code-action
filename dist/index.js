@@ -30174,7 +30174,7 @@ function isAllowed(actor, allowList) {
 }
 function isRepositoryMutationAllowed(context3) {
   return Boolean(
-    context3.isEntity && context3.config.allowFix && context3.config.mode === "fix" && !context3.isForkPR
+    context3.isEntity && context3.config.allowFix && context3.config.mode === "fix" && !context3.isForkPR && !context3.isClosedOrMergedPR
   );
 }
 async function validateActorAndPermissions(octokit, context3) {
@@ -48357,11 +48357,22 @@ async function main() {
       const prState = context3.payload.pull_request?.state;
       const isMerged = context3.payload.pull_request?.merged;
       if (prState === "closed" || isMerged) {
-        setOutput("conclusion", "skipped");
-        notice(
-          `Pull request is closed or merged (state: ${prState}, merged: ${isMerged}). Skipping Garda review/action.`
-        );
-        return;
+        const explicitlyTriggered = Boolean(config.prompt.trim()) || containsTrigger(context3);
+        if (!explicitlyTriggered) {
+          setOutput("conclusion", "skipped");
+          notice(
+            `Pull request is closed or merged (state: ${prState}, merged: ${isMerged}) and was not explicitly triggered. Skipping.`
+          );
+          return;
+        }
+        if (config.allowFix || context3.config.mode === "fix") {
+          notice(
+            `Pull request is closed or merged; running in read-only mode (fix/commit disabled).`
+          );
+          context3.config.allowFix = false;
+          if (context3.config.mode === "fix") context3.config.mode = "review";
+        }
+        context3.isClosedOrMergedPR = true;
       }
     } else if (context3.isEntity) {
       const issueState = context3.payload.issue?.state;

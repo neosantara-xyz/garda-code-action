@@ -19,6 +19,7 @@ export type NeoContext = {
   isPR: boolean;
   isForkPR: boolean;
   isPullRequestTarget: boolean;
+  isClosedOrMergedPR?: boolean;
   entityNumber?: number;
   baseBranch?: string;
   headBranch?: string;

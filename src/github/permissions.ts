@@ -22,7 +22,8 @@ export function isRepositoryMutationAllowed(context: NeoContext): boolean {
     context.isEntity &&
     context.config.allowFix &&
     context.config.mode === "fix" &&
-    !context.isForkPR,
+    !context.isForkPR &&
+    !context.isClosedOrMergedPR,
   );
 }
 
