@@ -29,6 +29,31 @@ function isBotComment(comment: CommentLike, context: NeoContext): boolean {
   );
 }
 
+/**
+ * Strip any Garda-rendered scaffolding (marker, working-title + spinner line,
+ * and trailing workflow-run link) that the model may have echoed back into the
+ * status/body it passes to github_update_tracking_comment. Without this, the
+ * model occasionally includes the title in its own text and renderProgress
+ * wraps it again, producing a duplicated "Garda Code sedang bekerja…" header.
+ */
+function stripScaffolding(text: string): string {
+  if (!text) return "";
+  let out = text;
+  // Remove the HTML marker comment.
+  out = out.replace(/<!--\s*garda-code-action-comment\s*-->/g, "");
+  // Remove any "### Garda Code is working… <img .../>" (or Indonesian) heading,
+  // including a bare title line without the spinner.
+  out = out.replace(
+    /^#{0,6}\s*Garda Code (sedang bekerja|is working)…?.*$/gim,
+    "",
+  );
+  // Remove any inline spinner image tags.
+  out = out.replace(/<img[^>]*garda-spinner\.gif[^>]*>/gi, "");
+  // Remove trailing "[View workflow run](...)" links — re-added once below.
+  out = out.replace(/\[View workflow run\]\([^)]*\)/g, "");
+  return out.trim();
+}
+
 export function renderProgress(
   context: NeoContext,
   status: string,
@@ -37,7 +62,9 @@ export function renderProgress(
   const title = context.config.reviewLanguage.toLowerCase().startsWith("id")
     ? "Garda Code sedang bekerja"
     : "Garda Code is working";
-  return `${MARKER}\n### ${title}… ${SPINNER_HTML}\n\n${status}\n\n${body ? `${body}\n\n` : ""}[View workflow run](${context.runUrl})`;
+  const cleanStatus = stripScaffolding(status);
+  const cleanBody = stripScaffolding(body);
+  return `${MARKER}\n### ${title}… ${SPINNER_HTML}\n\n${cleanStatus}\n\n${cleanBody ? `${cleanBody}\n\n` : ""}[View workflow run](${context.runUrl})`;
 }
 
 export async function findStickyComment(

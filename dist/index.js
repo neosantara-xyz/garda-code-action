@@ -39698,14 +39698,28 @@ function isBotComment(comment, context3) {
   if (userId && GARDA_BOT_APP_IDS.has(userId)) return true;
   return type === "bot" || login === botName || login === "github-actions[bot]" || login === "neo-code[bot]" || login === "neosantara-ai[bot]";
 }
+function stripScaffolding(text) {
+  if (!text) return "";
+  let out = text;
+  out = out.replace(/<!--\s*garda-code-action-comment\s*-->/g, "");
+  out = out.replace(
+    /^#{0,6}\s*Garda Code (sedang bekerja|is working)…?.*$/gim,
+    ""
+  );
+  out = out.replace(/<img[^>]*garda-spinner\.gif[^>]*>/gi, "");
+  out = out.replace(/\[View workflow run\]\([^)]*\)/g, "");
+  return out.trim();
+}
 function renderProgress(context3, status, body = "") {
   const title = context3.config.reviewLanguage.toLowerCase().startsWith("id") ? "Garda Code sedang bekerja" : "Garda Code is working";
+  const cleanStatus = stripScaffolding(status);
+  const cleanBody = stripScaffolding(body);
   return `${MARKER}
 ### ${title}\u2026 ${SPINNER_HTML}
 
-${status}
+${cleanStatus}
 
-${body ? `${body}
+${cleanBody ? `${cleanBody}
 
 ` : ""}[View workflow run](${context3.runUrl})`;
 }
