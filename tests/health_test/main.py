@@ -22,14 +22,17 @@ async def run_async():
     get_settings().set("config.git_provider", "github")
     get_settings().set("config.publish_output", False)
     get_settings().set("config.fallback_models", [])
+    get_settings().set("GITHUB.USER_TOKEN", os.getenv("GITHUB_TOKEN"))
+    get_settings().set("NEOSANTARA.KEY", os.getenv("NEOSANTARA_API_KEY"))
+    get_settings().set("pr_code_suggestions.focus_only_on_problems", False)
 
     agent = GardaAgent()
     try:
         # Run the 'describe' command
         get_logger().info(f"\nSanity check for the 'describe' command...")
         original_settings = copy.deepcopy(get_settings())
-        await agent.handle_request(pr_url, ['describe'])
-        pr_header_body = dict(get_settings().data)['artifact']
+        await agent.handle_request(pr_url, ['describe', '--config.publish_output=false'])
+        pr_header_body = get_settings().get('data', {}).get('artifact', '')
         assert pr_header_body.startswith('###') and 'PR Type' in pr_header_body and 'Description' in pr_header_body
         context['settings'] = copy.deepcopy(original_settings) # Restore settings state after each test to prevent test interference
         get_logger().info("PR description generated successfully\n")
@@ -37,8 +40,8 @@ async def run_async():
         # Run the 'review' command
         get_logger().info(f"\nSanity check for the 'review' command...")
         original_settings = copy.deepcopy(get_settings())
-        await agent.handle_request(pr_url, ['review'])
-        pr_review_body = dict(get_settings().data)['artifact']
+        await agent.handle_request(pr_url, ['review', '--config.publish_output=false'])
+        pr_review_body = get_settings().get('data', {}).get('artifact', '')
         assert pr_review_body.startswith('##') and 'Garda Review Guide' in pr_review_body
         context['settings'] = copy.deepcopy(original_settings)  # Restore settings state after each test to prevent test interference
         get_logger().info("PR review generated successfully\n")
@@ -46,8 +49,8 @@ async def run_async():
         # Run the 'improve' command
         get_logger().info(f"\nSanity check for the 'improve' command...")
         original_settings = copy.deepcopy(get_settings())
-        await agent.handle_request(pr_url, ['improve'])
-        pr_improve_body = dict(get_settings().data)['artifact']
+        await agent.handle_request(pr_url, ['improve', '--config.publish_output=false'])
+        pr_improve_body = get_settings().get('data', {}).get('artifact', '')
         assert pr_improve_body.startswith('##') and 'PR Code Suggestions' in pr_improve_body
         context['settings'] = copy.deepcopy(original_settings)  # Restore settings state after each test to prevent test interference
         get_logger().info("PR improvements generated successfully\n")
