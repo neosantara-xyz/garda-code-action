@@ -121,3 +121,4 @@ When using Garda Code Action with your own LLM provider key, code is sent direct
 # Test trigger comment
 <!-- test trigger comment -->
 
+# test 2
