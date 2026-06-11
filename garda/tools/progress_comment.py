@@ -1,7 +1,7 @@
 from garda.config_loader import get_settings
 
 DEFAULT_PROGRESS_GIF_WIDTH = 48
-DEFAULT_PROGRESS_GIF_URL = ""
+DEFAULT_PROGRESS_GIF_URL = "https://raw.githubusercontent.com/neosantara-xyz/garda-code-action/main/assets/garda-spinner.gif"
 
 
 def get_progress_gif_url() -> str:
