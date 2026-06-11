@@ -5,4 +5,4 @@ branding:
   color: 'blue'
 runs:
   using: 'docker'
-  image: 'Dockerfile.github_action_dockerhub'
+  image: 'Dockerfile.github_action'
