@@ -1,19 +1,21 @@
-node_modules/
+.idea/
+.lsp/
+.vscode/
 .env
-.env.local
-.env.*
-*.log
-.garda-pr/
-.antigravitycli/
-.gemini/
+.venv/
+venv/
+garda/settings/.secrets.toml
+__pycache__
+dist/
+*.egg-info/
+build/
 .DS_Store
+docs/.cache/
+.neosantara
+poetry.lock
+.log
 *.zip
-*.tar.gz
-
-# Secrets — never commit
 *.pem
 *.key
-*.private-key.pem
-
-# Secret scanner cache
 .cache_ggshield
+

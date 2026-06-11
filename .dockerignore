@@ -1,0 +1,6 @@
+.venv/
+venv/
+garda/settings/.secrets.toml
+pics/
+garda.egg-info/
+build/

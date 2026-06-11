@@ -1,36 +1,50 @@
-# Changelog
+## 2023-08-03
 
-All notable changes to Garda Code Action are documented here.
+### Optimized
 
-## [v1] - 2026-06-10
+- Optimized PR diff processing by introducing caching for diff files, reducing the number of API calls.
+- Refactored `load_large_diff` function to generate a patch only when necessary.
+- Fixed a bug in the GitLab provider where the new file was not retrieved correctly.
+
+## 2023-08-02
+
+### Enhanced
+
+- Updated several tools in the `garda` package to use commit messages in their functionality.
+- Commit messages are now retrieved and stored in the `vars` dictionary for each tool.
+- Added a section to display the commit messages in the prompts of various tools.
+
+## 2023-08-01
+
+### Enhanced
+
+- Introduced the ability to retrieve commit messages from pull requests across different git providers.
+- Implemented commit messages retrieval for GitHub and GitLab providers.
+- Updated the PR description template to include a section for commit messages if they exist.
+- Added support for repository-specific configuration files (.garda.toml) for the Garda Code Action.
+- Implemented this feature for both GitHub and GitLab providers.
+- Added a new configuration option 'use_repo_settings_file' to enable or disable the use of a repo-specific settings file.
+
+## 2023-07-30
+
+### Enhanced
+
+- Added the ability to modify any configuration parameter from 'configuration.toml' on-the-fly.
+- Updated the command line interface and bot commands to accept configuration changes as arguments.
+- Improved the Garda Code Action to handle additional arguments for each action.
+
+## 2023-07-28
+
+### Improved
+
+- Enhanced error handling and logging in the GitLab provider.
+- Improved handling of inline comments and code suggestions in GitLab.
+- Fixed a bug where an additional unneeded line was added to code suggestions in GitLab.
+
+## 2023-07-26
 
 ### Added
 
-- **Branded progress spinner** — the progress comment now uses Garda's own
-  animated spinner asset instead of a borrowed one.
-- **Hosted GitHub App token exchange** — Garda mints its `garda-code[bot]`
-  token automatically via Neosantara's OIDC token exchange. No private key to
-  manage. Auto-detects `id-token: write` and falls back to `GITHUB_TOKEN` when
-  the app is not installed.
-- **Multiple fallback models** — `fallback_model` accepts a comma/newline list
-  tried in order when the primary model is unavailable (503/404/422).
-- Product-first quickstart and example workflows.
-
-### Changed
-
-- Default model is now `gemini-3.5-flash` with a `claude-opus-4-6`,
-  `claude-sonnet-4-6` fallback chain.
-- Review loop now finishes reliably: the agent is given an explicit
-  termination contract and a step budget, and is forced to return its report
-  near the step limit instead of looping on read tools.
-
-### Fixed
-
-- Token-exchange backend now accepts `pull_request` workflow refs, so PR
-  reviews from same-repo branches are no longer rejected.
-
-### Security
-
-- Token exchange validates that the calling workflow runs from the default
-  branch or a pull-request ref, and revokes the minted token if validation
-  fails (fail-closed).
+- New feature for updating the CHANGELOG.md based on the contents of a PR.
+- Added support for this feature for the Github provider.
+- New configuration settings and prompts for the changelog update feature.

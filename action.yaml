@@ -1,0 +1,8 @@
+name: 'Garda Code Action'
+description: 'Summarize, review, and suggest PR improvements with Neosantara'
+branding:
+  icon: 'award'
+  color: 'blue'
+runs:
+  using: 'docker'
+  image: 'Dockerfile.github_action_dockerhub'
